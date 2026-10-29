@@ -3780,6 +3780,12 @@
             color: var(--maroon-600);
             margin: -10px 0 16px;
         }
+        /* 🆕 [বকেয়া লাল চিহ্ন] মাসিক মেনু — নির্ধারিত তারিখের মধ্যে যারা টাকা দেননি তাদের পুরো সারি লাল */
+        tr.unpaid-red-row > td { background: #fee2e2 !important; color: #b91c1c !important; font-weight: 600; }
+        tr.unpaid-red-row > td *:not(.btn):not(button) { color: #b91c1c !important; }
+        tr.unpaid-red-row > td img { outline: 2px solid #b91c1c; }
+        .unpaid-red-day-box { display:inline-flex; align-items:center; gap:4px; }
+        .unpaid-red-day-box input { width:54px; text-align:center; padding:4px 6px; border:1px solid var(--line); border-radius:8px; font:inherit; }
         /* 🆕 মাসিক অনুদানের বার্ষিক ম্যাট্রিক্স রিপোর্ট — প্রশস্ত এক্সপোর্ট (১২ মাস একসাথে) */
         #export-capture.wide-export {
             width: 1500px;
@@ -9982,6 +9988,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                 const users = [];
                 snap.forEach(d => users.push({ uid: d.id, ...d.data() }));
                 userList = users;
+                try { mfReconcileProfilesFromUsers(); } catch (e) { console.error(e); }   // 🆕 [প্রোফাইল-সিঙ্ক]
                 const reqSnap = await getDocs(query(collection(window._firestoreDb, 'requests'), orderBy('createdAt',
                     'desc')));
                 const reqs = [];
@@ -10870,12 +10877,13 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             const user = window.currentUser;
             if (!user) return;
             const existing = window._ownUserDoc || userList.find(u => u.email === user.email) || {};
+            const _pfMem = (typeof findMyMemberRecord === 'function') ? findMyMemberRecord() : null;   // 🆕 [প্রোফাইল-সিঙ্ক] ইউজার-ডকে মান না থাকলে নিজের সদস্য-রেকর্ড থেকে
             openModal(`
             <h3>✎ প্রোফাইল সম্পাদনা</h3>
             <p class="small muted">আপনার তথ্য হালনাগাদ করুন। ইমেইল পরিবর্তন করতে চাইলে অ্যাডমিনের কাছে রিকোয়েস্ট পাঠান।</p>
-            <div class="field"><label>নাম</label><input type="text" id="sp-name" value="${escapeHtml(existing.displayName || user.email.split('@')[0])}" placeholder="আপনার নাম"></div>
-            <div class="field"><label>মোবাইল নম্বর</label><input type="tel" id="sp-mobile" value="${escapeHtml(existing.mobile || '')}" placeholder="01XXX-XXXXXX"></div>
-            <div class="field"><label>পিতা/স্বামীর নাম</label><input type="text" id="sp-father" value="${escapeHtml(existing.father || '')}" placeholder="আপনার পিতা/স্বামীর নাম"></div>
+            <div class="field"><label>নাম</label><input type="text" id="sp-name" value="${escapeHtml(existing.displayName || (_pfMem && _pfMem.name) || user.email.split('@')[0])}" placeholder="আপনার নাম"></div>
+            <div class="field"><label>মোবাইল নম্বর</label><input type="tel" id="sp-mobile" value="${escapeHtml(existing.mobile || (_pfMem && _pfMem.mobile) || '')}" placeholder="01XXX-XXXXXX"></div>
+            <div class="field"><label>পিতা/স্বামীর নাম</label><input type="text" id="sp-father" value="${escapeHtml(existing.father || (_pfMem && _pfMem.father) || '')}" placeholder="আপনার পিতা/স্বামীর নাম"></div>
             <!-- 🔧 [ধাপ ৫-১] গ্রুপ আইডি শুধু এডমিন এডিট করতে পারবেন -->
             <div class="field">
               <label>গ্রুপ আইডি নম্বর</label>
@@ -10899,13 +10907,100 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                     const father = document.getElementById('sp-father').value.trim();
                     // 🆕 গ্রুপের দায়িত্ব এখন ইউজার নিজে সম্পাদনা করতে পারবেন না — শুধু এডমিন সেট করতে
                     // পারবেন, তাই সেভ পেলোডে duty পাঠানো হচ্ছে না (বিদ্যমান মান অপরিবর্তিত থাকবে)
-                    await updateOwnProfile({ displayName, mobile, father }); // 🔧 [ধাপ ৫-১] groupIdNo/duty শুধু এডমিন
+                    await updateOwnProfile({ displayName, mobile, father, profileEditedAt: new Date().toISOString() });   // 🆕 [প্রোফাইল-সিঙ্ক] এডমিন প্যানেল এটা দেখে সদস্য-রেকর্ডে তুলে নেবে // 🔧 [ধাপ ৫-১] groupIdNo/duty শুধু এডমিন
                     closeModal();
                 };
             });
         };
 
         // 🆕 এডমিন যেকোনো ইউজারের নাম/মোবাইল/দায়িত্ব সম্পাদনা করতে পারবেন (users টেবিলের "✎ সম্পাদনা" বাটন)
+        // ======================================================================
+        //  🆕 [প্রোফাইল-সিঙ্ক] সদস্যের তথ্য ↔ ইউজারের তথ্য ↔ ইউজার প্যানেলের প্রোফাইল
+        //  কমন ফিল্ড (নাম, পিতা/স্বামী, মোবাইল, ছবি, পদবি/দায়িত্ব) যেকোনো একদিকে বদলালে অন্যদিকেও বদলায়।
+        //  সংযোগ: ইউজারের ইমেইল = সদস্যের ইমেইল। শুধু পরিবর্তিত ফিল্ডই পাঠানো হয় (বাকিগুলো অক্ষত)।
+        //  • এডমিন সদস্য/ইউজার সম্পাদনা করলে → দুই দিকেই সাথে সাথে লেখা হয়।
+        //  • ইউজার নিজের প্রোফাইল বদলালে → users ডকে profileEditedAt সহ সেভ হয় (নিরাপত্তা-রুলসের কারণে
+        //    ইউজার সরাসরি সদস্য-ডেটায় লিখতে পারে না); এডমিন প্যানেল খোলা থাকলে (বা পরে খুললে)
+        //    সদস্য-রেকর্ডে স্বয়ংক্রিয়ভাবে হালনাগাদ হয়ে যায়।
+        // ======================================================================
+        const PROFILE_SYNC_PAIRS = [['name', 'displayName'], ['father', 'father'], ['mobile', 'mobile'], ['imageUrl', 'photoUrl'], ['position', 'duty'], ['idNumber', 'groupIdNo']];
+        const PROFILE_SELF_PAIRS = [['name', 'displayName'], ['father', 'father'], ['mobile', 'mobile']];   // ইউজার নিজে যা বদলাতে পারে
+        const _pfEmail = v => String(v || '').trim().toLowerCase();
+        const mfNowISO = () => new Date().toISOString();
+        const mfLinkedUserForMember = (m) => { const e = _pfEmail(m && m.email); return e ? (userList || []).find(u => _pfEmail(u.email) === e) || null : null; };
+        const mfLinkedMemberForUser = (u) => { const e = _pfEmail(u && u.email); return e ? (state.members || []).find(x => _pfEmail(x.email) === e) || null : null; };
+        // সদস্য-ফর্মে কোন কমন ফিল্ডগুলো আসলেই বদলেছে (Object.assign-এর আগে ডাকতে হবে)
+        const mfChangedKeysForMember = (m, data) => PROFILE_SYNC_PAIRS.map(p => p[0]).filter(k => (k in data) && String(m[k] || '') !== String(data[k] || ''));
+        // সদস্য সম্পাদনার পর: সংযুক্ত ইউজারের ডকে শুধু পরিবর্তিত ফিল্ড লেখা (এডমিন-অনলি)
+        const mfPushMemberToUser = async (m, changedKeys, now) => {
+            try {
+                if (!changedKeys.length || !m.email || typeof isAdminUser !== 'function' || !isAdminUser() || typeof window._firestore === 'undefined') return;
+                let u = mfLinkedUserForMember(m);
+                if (!u && (!userList || !userList.length) && typeof loadUsersFromFirestore === 'function') { await loadUsersFromFirestore(); u = mfLinkedUserForMember(m); }
+                if (!u) return;
+                const patch = { profileEditedAt: now, updatedAt: now };
+                PROFILE_SYNC_PAIRS.forEach(([mk, uk]) => { if (changedKeys.includes(mk)) patch[uk] = m[mk] || ''; });
+                const { doc, updateDoc } = window._firestore;
+                await updateDoc(doc(window._firestoreDb, 'users', u.uid), patch);
+                Object.assign(u, patch);
+                toast('🔗 ইউজারের প্রোফাইলেও একই তথ্য হালনাগাদ হয়েছে');
+            } catch (e) { console.error('[প্রোফাইল-সিঙ্ক] সদস্য→ইউজার ব্যর্থ', e); toast('⚠️ ইউজারের প্রোফাইলে সিঙ্ক করা যায়নি'); }
+        };
+        // ইউজার সম্পাদনার (এডমিন) পর: সংযুক্ত সদস্য-রেকর্ডে পরিবর্তিত ফিল্ড বসানো
+        const mfApplyUserEditToMember = (u, data, changedPairs, now) => {
+            try {
+                if (!changedPairs.length) return;
+                const m = mfLinkedMemberForUser(u);
+                if (!m) return;
+                changedPairs.forEach(([mk, uk]) => { m[mk] = data[uk] || ''; });
+                m.profileUpdatedAt = now;
+                saveState();
+                addActivityLog('edit', 'member', m.id, `"${m.name}" — ইউজার-তথ্য সম্পাদনার সাথে সদস্যের তথ্যও সিঙ্ক হয়েছে`);
+                toast('🔗 সদস্যের তথ্যেও একই পরিবর্তন হয়েছে');
+            } catch (e) { console.error('[প্রোফাইল-সিঙ্ক] ইউজার→সদস্য ব্যর্থ', e); }
+        };
+        // ইউজার নিজের প্রোফাইল বদলালে (profileEditedAt নতুন হলে) সেটা সদস্য-রেকর্ডে তুলে নেওয়া — শুধু এডমিন প্যানেলে চলে
+        const mfReconcileProfilesFromUsers = () => {
+            if (typeof isAdminUser !== 'function' || !isAdminUser() || !state || !Array.isArray(state.members) || !state.members.length) return 0;
+            let changedCount = 0, dirty = false;
+            (userList || []).forEach(u => {
+                if (!u.profileEditedAt) return;
+                const m = mfLinkedMemberForUser(u);
+                if (!m || String(u.profileEditedAt) <= String(m.profileUpdatedAt || '')) return;
+                let ch = false;
+                PROFILE_SELF_PAIRS.forEach(([mk, uk]) => {
+                    const v = String(u[uk] == null ? '' : u[uk]).trim();
+                    if (mk === 'name' && !v) return;
+                    if (String(m[mk] || '') !== v) { m[mk] = v; ch = true; }
+                });
+                m.profileUpdatedAt = u.profileEditedAt;
+                dirty = true;
+                if (ch) { changedCount++; try { addActivityLog('edit', 'member', m.id, `"${m.name}" — ইউজার নিজের প্রোফাইল বদলানোয় সদস্যের তথ্য সিঙ্ক হয়েছে`); } catch (e) {} }
+            });
+            if (dirty) {
+                saveState();
+                if (changedCount) {
+                    toast('🔗 ' + changedCount + ' জন ইউজারের প্রোফাইল-পরিবর্তন সদস্য-তালিকায় সিঙ্ক হয়েছে');
+                    if (['members', 'monthly', 'yearly', 'users'].includes(currentTab)) renderMain();
+                }
+            }
+            return changedCount;
+        };
+        window.mfReconcileProfilesFromUsers = mfReconcileProfilesFromUsers;
+        // ইউজার-ডক বদলালে (যেমন ইউজার প্রোফাইল সম্পাদনা করলে) এডমিন প্যানেলে লাইভ রিফ্রেশ + সিঙ্ক
+        let _mfProfileSyncUnsub = null, _mfProfileSyncTimer = null;
+        const mfStartProfileSyncListener = () => {
+            if (_mfProfileSyncUnsub || typeof window._firestore === 'undefined') return;
+            try {
+                const { collection, onSnapshot } = window._firestore;
+                let first = true;
+                _mfProfileSyncUnsub = onSnapshot(collection(window._firestoreDb, 'users'), () => {
+                    if (first) { first = false; return; }
+                    clearTimeout(_mfProfileSyncTimer);
+                    _mfProfileSyncTimer = setTimeout(() => { if (isAdminUser()) loadUsersFromFirestore(); }, 800);
+                }, e => console.error('[প্রোফাইল-সিঙ্ক] লিসেনার', e));
+            } catch (e) { console.error(e); }
+        };
         const openUserEditForm = (uid) => {
             const u = userList.find(x => x.uid === uid);
             if (!u) return;
@@ -10915,6 +11010,8 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             <div class="field"><label>নাম</label><input type="text" id="ue-name" value="${escapeHtml(u.displayName || '')}" placeholder="পূর্ণ নাম"></div>
             <div class="field"><label>মোবাইল নাম্বার</label><input type="tel" id="ue-mobile" value="${escapeHtml(u.mobile || '')}" placeholder="01XXX-XXXXXX"></div>
             <div class="field"><label>পদবী / দায়িত্ব</label><input type="text" id="ue-position" value="${escapeHtml(u.duty || '')}" placeholder="যেমন: সভাপতি, সম্পাদক, কোষাধ্যক্ষ"></div>
+            <div class="field"><label>গ্রুপ আইডি</label><input type="text" id="ue-groupid" value="${escapeHtml(u.groupIdNo || '')}" placeholder="গ্রুপের আইডি নম্বর"></div>
+            <div class="field"><label>পিতা/স্বামীর নাম</label><input type="text" id="ue-father" value="${escapeHtml(u.father || '')}" placeholder="পিতা/স্বামীর নাম"></div>
             <div class="modal-actions"><button class="btn btn-outline" id="ue-cancel">বাতিল</button><button class="btn btn-primary" id="ue-save">সংরক্ষণ করুন</button></div>
           `, () => {
                 document.getElementById('ue-cancel').onclick = closeModal;
@@ -10922,12 +11019,19 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                     const displayName = document.getElementById('ue-name').value.trim();
                     const mobile = document.getElementById('ue-mobile').value.trim();
                     const duty = document.getElementById('ue-position').value.trim();
+                    const groupIdNo = document.getElementById('ue-groupid').value.trim();
+                    const father = document.getElementById('ue-father').value.trim();
+                    // 🆕 [প্রোফাইল-সিঙ্ক]
+                    const _pfNewU = { displayName, mobile, duty, groupIdNo, father };
+                    const _pfChgU = PROFILE_SYNC_PAIRS.filter(([mk, uk]) => (uk in _pfNewU) && String(u[uk] || '') !== String(_pfNewU[uk] || ''));
+                    const _pfNowU = mfNowISO();
                     try {
                         if (typeof window._firestore !== 'undefined') {
                             const { doc, updateDoc } = window._firestore;
-                            await updateDoc(doc(window._firestoreDb, 'users', uid), { displayName, mobile, duty, updatedAt: new Date().toISOString() });
+                            await updateDoc(doc(window._firestoreDb, 'users', uid), { displayName, mobile, duty, groupIdNo, father, ...(_pfChgU.length ? { profileEditedAt: _pfNowU } : {}), updatedAt: new Date().toISOString() });
                         }
-                        Object.assign(u, { displayName, mobile, duty });
+                        Object.assign(u, { displayName, mobile, duty, groupIdNo, father }, _pfChgU.length ? { profileEditedAt: _pfNowU } : {});
+                        mfApplyUserEditToMember(u, _pfNewU, _pfChgU, _pfNowU);
                         addActivityLog('edit', 'user', uid, `"${u.email}" ইউজারের তথ্য সম্পাদনা করা হয়েছে`);
                         toast('✅ ইউজারের তথ্য হালনাগাদ হয়েছে');
                         closeModal();
@@ -11483,6 +11587,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
         `;
 
         const openMemberForm = (memberId) => {
+            try { mfReconcileProfilesFromUsers(); } catch (e) {}   // 🆕 [প্রোফাইল-সিঙ্ক] ফর্ম খোলার আগে ইউজারের নতুন নিজ-সম্পাদনা তুলে নেওয়া
             const m = memberId ? memberById(memberId) : null;
             const _colConfig = effectiveColumnConfig('members', window.MEMBERS_DEFAULT_COLUMNS);
             openModal(memberFormHtml(m, _colConfig), () => {
@@ -11512,6 +11617,8 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                     };
                     if (m) {
                         const old = m.name;
+                        const _pfChg = mfChangedKeysForMember(m, data);   // 🆕 [প্রোফাইল-সিঙ্ক]
+                        const _pfNow = mfNowISO();
                         // imageUrl ফিল্ডটি স্পর্শ না করে বাকি সব আপডেট করা হচ্ছে
                         m.name = data.name;
                         m.idNumber = data.idNumber;
@@ -11526,7 +11633,9 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                         m.willingYearlyAmount = data.willingYearlyAmount;
                         m.remarks = data.remarks;
                         m.customFields = data.customFields;
+                        if (_pfChg.length && m.email) m.profileUpdatedAt = _pfNow;
                         saveState();
+                        if (_pfChg.length && m.email) mfPushMemberToUser(m, _pfChg, _pfNow);   // শুধু এডমিন হলে কাজ করে
                         addActivityLog('edit', 'member', m.id, `"${old}" → "${m.name}" সদস্যের তথ্য সম্পাদনা`);
                         toast('হালনাগাদ হয়েছে');
                     } else {
@@ -12097,6 +12206,59 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
         //  ভিউ: মাসিক অনুদান
         // ======================================================================
         // 🆕 মাসিক অনুদান — অনুদানকারী সদস্যদের পরিশোধ-সারাংশ (আকর্ষণীয় কার্ড, এডমিনের সাথে সামঞ্জস্যপূর্ণ)
+        // 🆕 [বকেয়া লাল চিহ্ন] মাসিক মেনুর বাটন — চালু করলে নির্ধারিত তারিখের (ডিফল্ট ১৫) মধ্যে যারা
+        // ওই মাসের টাকা দেননি তাদের পুরো সারি লাল হয়; বন্ধ করলে আগের স্বাভাবিক অবস্থা। শুধু দেখার
+        // সুবিধা — কোনো ডেটা পরিবর্তন হয় না। সেটিং এই ডিভাইসেই (localStorage) সংরক্ষিত থাকে।
+        const _UNPAID_RED_KEY = 'mf_monthly_unpaid_red_v1';
+        const getUnpaidRedCfg = () => {
+            try {
+                const o = JSON.parse(localStorage.getItem(_UNPAID_RED_KEY) || '{}');
+                let d = parseInt(o.day, 10);
+                if (!(d >= 1 && d <= 31)) d = 15;
+                return { on: !!o.on, day: d };
+            } catch (e) { return { on: false, day: 15 }; }
+        };
+        const setUnpaidRedCfg = (patch) => {
+            try { localStorage.setItem(_UNPAID_RED_KEY, JSON.stringify({ ...getUnpaidRedCfg(), ...patch })); } catch (e) {}
+        };
+        // নির্বাচিত মাসের কাট-অফ তারিখ (YYYY-MM-DD); মাসে দিন কম থাকলে (যেমন ৩১ → ৩০/২৮) শেষ দিনে নামিয়ে আনে
+        const unpaidRedCutoffISO = (monthKey, day) => {
+            const mo = (getMonthsForYear(selectedYear) || []).find(x => x.key === monthKey);
+            let year, mIdx;
+            if (mo) { year = mo.year; mIdx = MONTH_NAMES_EN.indexOf(mo.eng); }
+            else { const p = String(monthKey || '').split('-'); year = parseInt(p[1], 10); mIdx = MONTH_NAMES_EN.indexOf(p[0]); }
+            if (!year || mIdx < 0) return null;
+            const d = Math.min(day, new Date(year, mIdx + 1, 0).getDate());
+            return year + '-' + String(mIdx + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+        };
+        // সত্য = এই মাসের জন্য মাসিক অনুদানকারী সদস্য কাট-অফ তারিখের মধ্যে টাকা দেননি
+        // (একদম দেননি, অথবা দিয়েছেন কিন্তু তারিখ কাট-অফের পরে)
+        const isUnpaidByCutoff = (memberId, monthKey, day) => {
+            const m = memberById(memberId);
+            if (!m || !m.willingMonthly) return false;
+            const e = getMonthlyEntry(memberId, monthKey);
+            if (!e || !(Number(e.amount) > 0)) return true;
+            const cut = unpaidRedCutoffISO(monthKey, day);
+            if (cut && e.date && String(e.date).slice(0, 10) > cut) return true;
+            return false;
+        };
+        const unpaidRedToolbarHtml = (cfg, redCount) => `
+                <button class="btn btn-sm ${cfg.on ? 'btn-danger' : 'btn-outline'}" id="toggle-unpaid-red" title="নির্ধারিত তারিখের মধ্যে যারা টাকা দেননি তাদের সারি লাল দেখাবে">🔴 বকেয়া লাল চিহ্ন ${cfg.on ? 'চালু (বন্ধ করুন)' : 'বন্ধ (চালু করুন)'}</button>
+                <label class="small muted unpaid-red-day-box">মাসের <input type="text" inputmode="numeric" id="unpaid-red-day" value="${toBengaliNum(cfg.day)}" title="১–৩১ লিখুন"> তারিখের মধ্যে</label>
+                ${cfg.on ? `<span class="small" style="color:#b91c1c;font-weight:700;">🔴 ${toBengaliNum(redCount)} জন দেননি</span>` : ''}`;
+        const wireUnpaidRed = () => {
+            const b = document.getElementById('toggle-unpaid-red');
+            if (b) b.addEventListener('click', () => { setUnpaidRedCfg({ on: !getUnpaidRedCfg().on }); renderMain(); });
+            const inp = document.getElementById('unpaid-red-day');
+            if (inp) inp.addEventListener('change', () => {
+                const bn = '০১২৩৪৫৬৭৮৯';
+                const raw = String(inp.value).replace(/[০-৯]/g, ch => String(bn.indexOf(ch))).trim();
+                const d = parseInt(raw, 10);
+                if (!(d >= 1 && d <= 31)) { toast('⚠️ ১ থেকে ৩১ এর মধ্যে একটি তারিখ লিখুন'); inp.value = toBengaliNum(getUnpaidRedCfg().day); return; }
+                setUnpaidRedCfg({ day: d });
+                if (getUnpaidRedCfg().on) renderMain();
+            });
+        };
         const monthlySummaryHtml = (donorCount, paidCount, unpaidCount, paidPct, filtered) => `
             <div class="card" id="month-paid-summary" style="margin-bottom:14px;padding:14px 18px;">
               <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;">
@@ -12160,6 +12322,8 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             // নরমালাইজ করা হলো, যাতে নিচে একই কলাম-কী দিয়ে জেনেরিক রেন্ডার করা যায়
             let rows = [];
             let fmCount = 0;
+            const _urc = getUnpaidRedCfg();
+            let _redCount = 0;
             if (filtered) {
                 let sorted = [...data].sort((a, b) => monthKeySortValue(a.month) - monthKeySortValue(b.month));
                 sorted = applyAmountSort(sorted, 'monthly', r => Number(r.amount) || 0);
@@ -12223,7 +12387,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                 return thHtmlWithResize(k, displayLabel, cell.thClass, colConf ? colConf.width : null);
             }).join('');
             const tableRows = rows.length ?
-                rows.map((r, i) => `<tr>${_monthlyVisibleKeys.map(k => _monthlyCols[k] ? _monthlyCols[k].td(r, i) : '').join('')}</tr>`).join('') :
+                rows.map((r, i) => { const _isRed = !filtered && _urc.on && isUnpaidByCutoff(r.memberId, currentMonth, _urc.day); if (_isRed) _redCount++; return `<tr${_isRed ? ' class="unpaid-red-row"' : ''}>${_monthlyVisibleKeys.map(k => _monthlyCols[k] ? _monthlyCols[k].td(r, i) : '').join('')}</tr>`; }).join('') :
                 `<tr><td colspan="${_monthlyVisibleKeys.length || 1}"><div class="empty-state"><div class="em">${filtered ? '📭' : '👤'}</div>${filtered ? 'এই রেঞ্জে কোনো মাসিক অনুদান পাওয়া যায়নি।' : 'কোনো সদস্য পাওয়া যায়নি।'}</div></td></tr>`;
 
             const overrideNotice = filtered ?
@@ -12250,6 +12414,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             <div class="toolbar no-print" style="margin-top:-8px;">
               <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
                 ${amountSortBtnHtml('monthly', 'পরিমাণ')}
+                ${filtered ? '' : unpaidRedToolbarHtml(_urc, _redCount)}
                 <button class="btn btn-outline btn-sm" id="btn-monthly-yearly-jpg" title="সম্পূর্ণ বছরের সব মাসের অনুদানের হিসাব একসাথে JPG করুন">🖼️ বার্ষিক JPG</button>
                 <button class="btn btn-outline btn-sm" id="btn-monthly-yearly-print" title="সম্পূর্ণ বছরের সব মাসের অনুদানের হিসাব একসাথে প্রিন্ট করুন">🖨️ বার্ষিক প্রিন্ট</button>
               </div>
@@ -12532,6 +12697,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                 ys.disabled = filtered;
             }
             wireAmountSortBtn('monthly');
+            wireUnpaidRed();
             const yjBtn = document.getElementById('btn-monthly-yearly-jpg');
             if (yjBtn) yjBtn.addEventListener('click', exportMonthlyYearlySummaryAsImage);
             const ypBtn = document.getElementById('btn-monthly-yearly-print');
