@@ -2,6 +2,7 @@
 <html lang="bn">
 <head>
     <meta charset="UTF-8" />
+    <!-- 🆕 [v16.5.42] 💬 WhatsApp/Messenger মেসেজ বাটন (canSendEmail থাকলে ✉️-এর পাশে) + সদস্য-ফর্মে whatsapp/fbUsername ঘর — admin v16.5.40-এর সমান। Rules অপরিবর্তিত। -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content" />
     <title>সরদার হাট তাফসিরুল ওয়াজ মাহফিল — তহবিল ব্যবস্থাপনা (ইউজার প্যানেল)</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -6819,7 +6820,8 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
         // 🆕 ইমেইল বাটনের HTML (কার্যক্রম কলামে বসানোর জন্য — সদস্য/মাসিক/বার্ষিক তিন জায়গাতেই ব্যবহৃত হয়)
         // 🆕 [মাসিক ফান্ড] context='monthly' + monthKey দিলে মাস-ভিত্তিক টেমপ্লেট ব্যবহৃত হবে
         const emailButtonHtml = (memberId, context, monthKey) =>
-            `<button class="btn btn-outline btn-sm" data-email-member="${memberId}"${context ? ` data-email-context="${escapeHtml(context)}"` : ''}${monthKey ? ` data-email-month="${escapeHtml(monthKey)}"` : ''} title="ইমেইল পাঠান">✉️</button>`;
+            `<button class="btn btn-outline btn-sm" data-email-member="${memberId}"${context ? ` data-email-context="${escapeHtml(context)}"` : ''}${monthKey ? ` data-email-month="${escapeHtml(monthKey)}"` : ''} title="ইমেইল পাঠান">✉️</button>` +
+            `<button class="btn btn-outline btn-sm" data-msg-member="${memberId}"${context ? ` data-msg-context="${escapeHtml(context)}"` : ''}${monthKey ? ` data-msg-month="${escapeHtml(monthKey)}"` : ''} title="WhatsApp / Messenger-এ মেসেজ">💬</button>`;
 
         // 🆕 ইমেইল প্রিভিউ/এডিট মোডাল — পাঠানোর আগে সাবজেক্ট ও মেসেজ এডিট করা যাবে
         const openEmailModal = async (memberId, context, monthKey) => {
@@ -7020,7 +7022,121 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
         };
         // 🆕 [ধাপ ৪] গ্লোবালভাবে "[data-email-member]" বাটন ওয়্যার করার হেল্পার — সদস্য/মাসিক/
         // বার্ষিক তিনটা afterXRender হুকেই কল হবে
+
+        // ======================================================================
+        //  🆕 [v16.5.40] ফ্রি WhatsApp / Messenger শেয়ার — কোনো API/টোকেন/খরচ নেই।
+        //  💬 বাটন → মেসেজ-মোডাল (ইমেইলের একই টেমপ্লেট থেকে লেখা, এডিট করা যায়) → "WhatsApp" (wa.me, লেখা প্রি-ফিল)
+        //  / "Messenger" (m.me; লেখা আগে কপি হয়, চ্যাটে পেস্ট করতে হয় — m.me প্রি-ফিল সমর্থন করে না) / "শেয়ার মেনু" (ছবিসহ)।
+        //  সদস্যের নতুন ফিল্ড: m.whatsapp (ঐচ্ছিক; ফাঁকা হলে m.mobile), m.fbUsername। পুরনো সদস্যে না থাকলেও সমস্যা নেই।
+        // ======================================================================
+        const mfMsgDigits = (s) => String(s || '').replace(/[০-৯]/g, ch => String('০১২৩৪৫৬৭৮৯'.indexOf(ch))).replace(/[^\d]/g, '');
+        const mfMsgWaNumber = (raw) => {
+            let d = mfMsgDigits(raw);
+            if (!d) return '';
+            if (d.startsWith('00')) d = d.slice(2);
+            if (/^01[3-9]\d{8}$/.test(d)) return '88' + d;       // 017XXXXXXXX → 88017XXXXXXXX
+            if (/^1[3-9]\d{8}$/.test(d)) return '880' + d;
+            return d;                                           // ইতিমধ্যে দেশকোডসহ (8801…) বা বিদেশি নাম্বার
+        };
+        const mfMsgFbHandle = (raw) => {
+            let s = String(raw || '').trim();
+            if (!s) return '';
+            s = s.replace(/^https?:\/\/(www\.|m\.|web\.|mbasic\.)?(facebook\.com|fb\.com|fb\.me|m\.me|messenger\.com\/t)\//i, '').replace(/^@/, '');
+            const idm = s.match(/profile\.php\?id=(\d+)/i);
+            if (idm) return idm[1];
+            s = s.split(/[?#]/)[0].replace(/\/+$/, '');
+            return /^[A-Za-z0-9.\-_]{1,100}$/.test(s) ? s : '';
+        };
+        const mfMsgCopy = async (text) => {
+            try { if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(text); return true; } } catch (e) {}
+            try {
+                const ta = document.createElement('textarea'); ta.value = text; ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0;';
+                document.body.appendChild(ta); ta.select(); const ok = document.execCommand('copy'); ta.remove(); return !!ok;
+            } catch (e) { return false; }
+        };
+        const mfMsgOpen = (url) => { const a = document.createElement('a'); a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer'; document.body.appendChild(a); a.click(); a.remove(); };
+        const openMsgShareModal = (memberId, context, monthKey) => {
+            const m = memberById(memberId);
+            if (!m) { toast('সদস্য পাওয়া যায়নি'); return; }
+            const isMonthly = context === 'monthly' && !!monthKey;
+            const donor = isMemberDonor(m.id);
+            const et = getEmailTemplates();
+            const hasItems = typeof getEmailItems === 'function' && typeof composeEmailItem === 'function';
+            const items = hasItems ? getEmailItems().filter(t => t.active) : [];
+            const opts = [{ key: '__default__', label: 'ডিফল্ট (স্বয়ংক্রিয়)' }];
+            ['custom1', 'custom2', 'custom3', 'custom4'].forEach(k => { if (et[k] && et[k].active !== false && (et[k].subject || et[k].body)) opts.push({ key: k, label: '🧩 ' + (et[k].name || k) }); });
+            items.forEach(t => opts.push({ key: 't:' + t.id, label: '📚 ' + t.name }));
+            const latestTxn = () => {
+                if (typeof getMemberTxns !== 'function') return null;
+                const txns = getMemberTxns(m.id);
+                if (isMonthly) { const en = getMonthlyEntry(m.id, monthKey); const i = en ? txns.findIndex(t => t.entry === en) : -1; if (i >= 0) return txns[i]; }
+                return txns.length ? txns[0] : null;
+            };
+            const compose = (key) => {
+                let c;
+                if (/^t:/.test(key)) {
+                    const it = items.find(x => 't:' + x.id === key);
+                    c = it ? composeEmailItem(it, m, isMonthly ? monthKey : null, latestTxn(), 'tpl') : { subject: '', body: '' };
+                } else if (key === '__default__') {
+                    c = isMonthly ? monthlyEmailTemplate(m, monthKey) : (donor ? donorEmailTemplate(m) : nonDonorEmailTemplate(m));
+                } else c = customEmailTemplate(key, m, isMonthly ? monthKey : null);
+                return ((c.subject ? c.subject + '\n\n' : '') + (c.body || '')).trim();
+            };
+            const wa = mfMsgWaNumber(m.whatsapp || m.mobile), fb = mfMsgFbHandle(m.fbUsername);
+            let initial = '';
+            try { initial = compose('__default__'); } catch (e) { initial = ''; }
+            openModal(`
+              <h3>💬 মেসেজ পাঠান — ${escapeHtml(m.name)}</h3>
+              <div class="small muted" style="margin-bottom:8px;">WhatsApp: <strong>${wa ? escapeHtml(m.whatsapp || m.mobile) : 'নেই'}</strong> · Messenger: <strong>${fb ? escapeHtml(fb) : 'নেই'}</strong>${(!wa || !fb) ? ' — "✎ সম্পাদনা" থেকে যোগ করুন' : ''}</div>
+              <div class="field"><label>টেমপ্লেট</label><select id="msg-tpl">${opts.map(o => `<option value="${escapeHtml(o.key)}">${escapeHtml(o.label)}</option>`).join('')}</select></div>
+              <div class="field"><label>মেসেজ (পাঠানোর আগে এডিট করা যাবে)</label><textarea id="msg-body" rows="10" style="width:100%;">${escapeHtml(initial)}</textarea></div>
+              <div class="field"><label>ছবি (ঐচ্ছিক — শুধু "📤 শেয়ার মেনু"-তে যায়)</label><input type="file" id="msg-img" accept="image/*"></div>
+              <div class="modal-actions" style="flex-wrap:wrap;gap:6px;">
+                <button class="btn btn-outline" id="msg-close">বন্ধ করুন</button>
+                <button class="btn btn-outline" id="msg-copy">📋 কপি</button>
+                <button class="btn btn-outline" id="msg-share">📤 শেয়ার মেনু</button>
+                <button class="btn btn-outline" id="msg-fb">Messenger</button>
+                <button class="btn btn-primary" id="msg-wa">WhatsApp</button>
+              </div>
+              <div class="small muted" style="margin-top:8px;line-height:1.5;">• WhatsApp: লেখা সরাসরি বসে যায়, আপনি শুধু "সেন্ড" চাপবেন। • Messenger: লেখা কপি হয়ে চ্যাট খুলবে — সেখানে পেস্ট করে সেন্ড করুন (সদস্যের সঙ্গে আগে কথা না থাকলে Facebook অনুরোধ হিসেবে যেতে পারে)। • ছবি পাঠাতে "শেয়ার মেনু" থেকে WhatsApp/Messenger বেছে নিন।</div>
+            `, () => {
+                const $ = id => document.getElementById(id);
+                const text = () => $('msg-body').value.trim();
+                $('msg-close').onclick = closeModal;
+                $('msg-tpl').onchange = () => { try { $('msg-body').value = compose($('msg-tpl').value); } catch (e) { toast('⚠️ টেমপ্লেট তৈরি করা যায়নি'); } };
+                $('msg-copy').onclick = async () => { toast(await mfMsgCopy(text()) ? '✅ কপি হয়েছে' : '⚠️ কপি করা যায়নি — লেখা সিলেক্ট করে কপি করুন'); };
+                $('msg-wa').onclick = () => {
+                    const t = text(); if (!t) { toast('মেসেজ খালি'); return; }
+                    if (!wa) toast('ℹ️ WhatsApp নম্বর নেই — কন্টাক্ট বেছে নিন');
+                    mfMsgOpen('https://wa.me/' + wa + '?text=' + encodeURIComponent(t));
+                };
+                $('msg-fb').onclick = () => {
+                    const t = text(); if (!t) { toast('মেসেজ খালি'); return; }
+                    if (!fb) { toast('⚠️ Facebook ইউজারনেম নেই — আগে "✎ সম্পাদনা" থেকে যোগ করুন'); return; }
+                    mfMsgCopy(t).then(ok => toast(ok ? '✅ লেখা কপি হয়েছে — Messenger-এ পেস্ট করুন' : '⚠️ কপি হয়নি — লেখা নিজে কপি করুন'));
+                    mfMsgOpen('https://m.me/' + encodeURIComponent(fb));
+                };
+                $('msg-share').onclick = async () => {
+                    const t = text(); const f = $('msg-img').files && $('msg-img').files[0];
+                    if (!navigator.share) { toast('⚠️ এই ব্রাউজারে শেয়ার মেনু নেই — WhatsApp/Messenger বাটন ব্যবহার করুন'); return; }
+                    try {
+                        const data = { text: t };
+                        if (f && navigator.canShare && navigator.canShare({ files: [f] })) data.files = [f];
+                        else if (f) toast('ℹ️ এই ডিভাইসে ছবিসহ শেয়ার চলছে না — শুধু লেখা যাচ্ছে');
+                        await navigator.share(data);
+                    } catch (e) { /* ব্যবহারকারী বাতিল করলে কিছু নয় */ }
+                };
+            });
+        };
+        const wireMsgButtons = () => {
+            document.querySelectorAll('[data-msg-member]').forEach(b => {
+                if (b.dataset.msgWired) return; b.dataset.msgWired = '1';
+                b.addEventListener('click', () => openMsgShareModal(b.dataset.msgMember, b.dataset.msgContext, b.dataset.msgMonth));
+            });
+        };
+
         const wireEmailButtons = () => {
+            wireMsgButtons();   // 🆕 [v16.5.40] 💬 বাটন
             document.querySelectorAll('[data-email-member]').forEach(b => {
                 // 🆕 [মাসিক ফান্ড] বাটনে বসানো context/month থাকলে সেটাও পাস করা হয়
                 b.addEventListener('click', () => openEmailModal(b.dataset.emailMember, b.dataset.emailContext, b
@@ -11566,6 +11682,8 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
           <div class="field"><label>নাম *</label><input type="text" id="f-name" value="${escapeHtml(m?.name || '')}" placeholder="যেমন: মো: আলাউদ্দিন সরদার"></div>
           <div class="field"><label>পিতা/স্বামীর নাম</label><input type="text" id="f-father" value="${escapeHtml(m?.father || '')}"></div>
           <div class="field"><label>মোবাইল</label><input type="tel" id="f-mobile" value="${escapeHtml(m?.mobile || '')}" placeholder="01XXX-XXXXXX"></div>
+          <div class="field"><label>WhatsApp নম্বর <span class="muted small">(ঐচ্ছিক — ফাঁকা হলে মোবাইল নম্বর ব্যবহার হবে)</span></label><input type="tel" id="f-whatsapp" value="${escapeHtml(m?.whatsapp || '')}" placeholder="01XXX-XXXXXX"></div>
+          <div class="field"><label>Facebook ইউজারনেম / লিংক <span class="muted small">(Messenger-এর জন্য)</span></label><input type="text" id="f-fbUsername" value="${escapeHtml(m?.fbUsername || '')}" placeholder="যেমন: md.alauddin অথবা facebook.com/md.alauddin"></div>
           <!-- ইউজার প্যানেলে ছবির URL ফিল্ড থাকবে না -->
           <div class="field"><label>জয়েন ডেট</label><input type="date" id="f-joinDate" value="${escapeHtml(m?.joinDate || '')}"></div>
           <div class="field"><label>অবস্থা</label><select id="f-status"><option ${m?.status !== 'নিষ্ক্রিয়' ? 'selected' : ''}>সক্রিয়</option><option ${m?.status === 'নিষ্ক্রিয়' ? 'selected' : ''}>নিষ্ক্রিয়</option></select></div>
@@ -11604,6 +11722,8 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                         idNumber: document.getElementById('f-idNumber').value.trim(),
                         father: document.getElementById('f-father').value.trim(),
                         mobile: document.getElementById('f-mobile').value.trim(),
+                        whatsapp: document.getElementById('f-whatsapp').value.trim(),   // 🆕 [v16.5.42]
+                        fbUsername: document.getElementById('f-fbUsername').value.trim(),   // 🆕 [v16.5.42]
                         // imageUrl: '', // ইউজার প্যানেলে ছবির URL সংরক্ষণ করা হবে না
                         joinDate: document.getElementById('f-joinDate').value,
                         status: document.getElementById('f-status').value,
@@ -11624,6 +11744,8 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                         m.idNumber = data.idNumber;
                         m.father = data.father;
                         m.mobile = data.mobile;
+                        m.whatsapp = data.whatsapp;
+                        m.fbUsername = data.fbUsername;
                         m.joinDate = data.joinDate;
                         m.status = data.status;
                         m.position = data.position;
