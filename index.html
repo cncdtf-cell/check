@@ -2,7 +2,7 @@
 <html lang="bn">
 <head>
     <meta charset="UTF-8" />
-    <!-- 🆕 [v16.5.42] 💬 WhatsApp/Messenger মেসেজ বাটন (canSendEmail থাকলে ✉️-এর পাশে) + সদস্য-ফর্মে whatsapp/fbUsername ঘর — admin v16.5.40-এর সমান। Rules অপরিবর্তিত। [v16.5.43] 🧾 "রিসিপ্ট ছবি সংযুক্ত" টিক (ইমেইলের একই হিসাব-রিসিপ্ট JPG হয়ে শেয়ার/ডাউনলোড) + সদস্য-তালিকায় WhatsApp/Facebook কলাম। [v16.5.44] 💬 মেসেজে এডমিনের টেমপ্লেট-ম্যানেজারের সব টেমপ্লেট ও সিগনেচার ব্যবহারযোগ্য; WhatsApp/Messenger বাটন সরাসরি নিজ অ্যাপের চ্যাট খোলে, শেয়ার-মেনু আলাদা। -->
+    <!-- 🆕 [v16.5.42] 💬 WhatsApp/Messenger মেসেজ বাটন (canSendEmail থাকলে ✉️-এর পাশে) + সদস্য-ফর্মে whatsapp/fbUsername ঘর — admin v16.5.40-এর সমান। Rules অপরিবর্তিত। [v16.5.43] 🧾 "রিসিপ্ট ছবি সংযুক্ত" টিক (ইমেইলের একই হিসাব-রিসিপ্ট JPG হয়ে শেয়ার/ডাউনলোড) + সদস্য-তালিকায় WhatsApp/Facebook কলাম। [v16.5.44] 💬 মেসেজে এডমিনের টেমপ্লেট-ম্যানেজারের সব টেমপ্লেট ও সিগনেচার ব্যবহারযোগ্য; WhatsApp/Messenger বাটন সরাসরি নিজ অ্যাপের চ্যাট খোলে, শেয়ার-মেনু আলাদা। [v16.5.45] 💬 মোডালে টেমপ্লেটের নিচে "👁️ সব টেমপ্লেটের প্রিভিউ" লিংক + মেসেজ/ছবির লাইভ প্রিভিউ (এডমিনের মতো)। -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content" />
     <title>সরদার হাট তাফসিরুল ওয়াজ মাহফিল — তহবিল ব্যবস্থাপনা (ইউজার প্যানেল)</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -7318,8 +7318,11 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             openModal(`
               <h3>💬 মেসেজ পাঠান — ${escapeHtml(m.name)}</h3>
               <div class="small muted" style="margin-bottom:8px;">WhatsApp: <strong>${wa ? escapeHtml(m.whatsapp || m.mobile) : 'নেই'}</strong> · Messenger: <strong>${fb ? escapeHtml(fb) : 'নেই'}</strong>${(!wa || !fb) ? ' — "✎ সম্পাদনা" থেকে যোগ করুন' : ''}</div>
-              <div class="field"><label>টেমপ্লেট</label><select id="msg-tpl">${opts.map(o => `<option value="${escapeHtml(o.key)}">${escapeHtml(o.label)}</option>`).join('')}</select></div>
+              <div class="field"><label>টেমপ্লেট</label><select id="msg-tpl">${opts.map(o => `<option value="${escapeHtml(o.key)}">${escapeHtml(o.label)}</option>`).join('')}</select>
+                <div class="small muted" style="margin-top:4px;"><a href="#" id="msg-tpl-prev">👁️ সব টেমপ্লেটের প্রিভিউ</a>${(typeof openEmailTemplateManager === 'function' && typeof isAdminUser === 'function' && isAdminUser()) ? ' · <a href="#" id="msg-open-mgr">📚 টেমপ্লেট ম্যানেজার</a>' : ''}</div>
+                <div id="msg-tpl-list" style="display:none;margin-top:6px;max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:6px;"></div></div>
               <div class="field"><label>মেসেজ (পাঠানোর আগে এডিট করা যাবে)</label><textarea id="msg-body" rows="10" style="width:100%;">${escapeHtml(initial)}</textarea></div>
+              <div class="field"><label>👁️ প্রিভিউ (যেভাবে যাবে)</label><div id="msg-pv" class="small" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;"></div></div>
               <div class="field" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
                 <input type="checkbox" id="msg-att" checked style="width:18px;height:18px;flex:none;">
                 <label for="msg-att" style="margin:0;">🧾 রিসিপ্ট ছবি সংযুক্ত করুন <span class="muted small">(ইমেইলে যে রিসিপ্ট যায় সেটাই)</span></label>
@@ -7337,8 +7340,21 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             `, () => {
                 const $ = id => document.getElementById(id);
                 const text = () => $('msg-body').value.trim();
-                let rcpt = null, rcptBusy = false, seq = 0;   // rcpt: { file } | { none } | { err } | null
-                const setSt = (t) => { const e = $('msg-att-st'); if (e) e.textContent = t; };
+                let rcpt = null, rcptBusy = false, seq = 0, stText = '', pvUrl = '';   // rcpt: { file } | { none } | { err } | null
+                const tplLabel = () => { const s = $('msg-tpl'); return s && s.selectedIndex >= 0 ? s.options[s.selectedIndex].text : ''; };
+                const updatePreview = () => {
+                    const pv = $('msg-pv'); if (!pv) return;
+                    if (pvUrl) { try { URL.revokeObjectURL(pvUrl); } catch (e) {} pvUrl = ''; }
+                    const att = $('msg-att') && $('msg-att').checked, extra = $('msg-img') && $('msg-img').files && $('msg-img').files[0];
+                    if (att && rcpt && rcpt.file) pvUrl = URL.createObjectURL(rcpt.file);
+                    pv.innerHTML = `
+                      <div><strong>প্রাপক:</strong> ${escapeHtml(m.name)} · WhatsApp ${wa ? escapeHtml(m.whatsapp || m.mobile) : '—'} · Messenger ${fb ? escapeHtml(fb) : '—'}</div>
+                      <div><strong>টেমপ্লেট:</strong> ${escapeHtml(tplLabel())}</div>
+                      <div><strong>ছবি:</strong> ${escapeHtml(stText || '—')}${extra ? ' · + অতিরিক্ত ছবি: ' + escapeHtml(extra.name) : ''}</div>
+                      ${pvUrl ? `<div style="margin-top:6px;"><a href="${pvUrl}" target="_blank" rel="noopener"><img src="${pvUrl}" alt="রিসিপ্ট" style="max-width:100%;max-height:180px;border:1px solid var(--line);border-radius:6px;"></a> <span class="muted">(বড় করে দেখতে ছবিতে চাপুন)</span></div>` : ''}
+                      <div style="margin-top:6px;padding:8px 10px;border:1px dashed var(--line);border-radius:8px;white-space:pre-wrap;max-height:240px;overflow:auto;">${escapeHtml($('msg-body').value) || '<span class="muted">(ফাঁকা)</span>'}</div>`;
+                };
+                const setSt = (t) => { stText = t; const e = $('msg-att-st'); if (e) e.textContent = t; updatePreview(); };
                 const prepare = async () => {
                     const my = ++seq; rcpt = null; rcptBusy = false;
                     if (!$('msg-att') || !$('msg-att').checked) { setSt('ছবি যাবে না (টিক বন্ধ)'); return; }
@@ -7359,7 +7375,26 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                 };
                 const canShareFiles = (files) => !!(navigator.share && navigator.canShare && navigator.canShare({ files }));
                 $('msg-close').onclick = closeModal;
-                $('msg-tpl').onchange = () => { try { $('msg-body').value = compose($('msg-tpl').value); } catch (e) { toast('⚠️ টেমপ্লেট তৈরি করা যায়নি'); } prepare(); };
+                $('msg-tpl').onchange = () => { try { $('msg-body').value = compose($('msg-tpl').value); } catch (e) { toast('⚠️ টেমপ্লেট তৈরি করা যায়নি'); } updatePreview(); prepare(); };
+                $('msg-body').addEventListener('input', updatePreview);
+                $('msg-img').addEventListener('change', updatePreview);
+                // 🔗 টেমপ্লেট-লিংক: সব টেমপ্লেটের প্রিভিউ-তালিকা (এই সদস্যের ডেটা বসিয়ে) — "ব্যবহার করুন" চাপলে সেটি বাছাই হয়; এডমিনের জন্য ম্যানেজার-লিংক
+                let listBuilt = false;
+                const buildTplList = () => {
+                    const box = $('msg-tpl-list'); box.innerHTML = '';
+                    opts.forEach(o => {
+                        let txt = '', tp = 'none';
+                        try { txt = compose(o.key); } catch (e) { txt = '(এই টেমপ্লেট তৈরি করা যায়নি)'; }
+                        try { tp = receiptPlan(o.key).type; } catch (e) {}
+                        const att = tp === 'none' ? 'ছবি যাবে না' : ('ছবি: ' + ((typeof PDF_TYPES !== 'undefined' && PDF_TYPES[tp]) || tp));
+                        const d = document.createElement('div'); d.style.cssText = 'border-bottom:1px solid var(--line);padding:6px 2px;';
+                        d.innerHTML = `<div><strong>${escapeHtml(o.label)}</strong> <span class="muted small">· ${escapeHtml(att)}</span> <button type="button" class="btn btn-outline btn-sm" data-use="${escapeHtml(o.key)}" style="margin-left:6px;">ব্যবহার করুন</button></div><div class="small" style="white-space:pre-wrap;max-height:90px;overflow:auto;margin-top:3px;">${escapeHtml(txt.length > 400 ? txt.slice(0, 400) + '…' : txt)}</div>`;
+                        box.appendChild(d);
+                    });
+                    box.querySelectorAll('[data-use]').forEach(b => b.onclick = () => { $('msg-tpl').value = b.dataset.use; $('msg-tpl').onchange(); $('msg-tpl-list').style.display = 'none'; });
+                };
+                $('msg-tpl-prev').onclick = (ev) => { ev.preventDefault(); const box = $('msg-tpl-list'); const show = box.style.display === 'none'; box.style.display = show ? 'block' : 'none'; if (show && !listBuilt) { listBuilt = true; buildTplList(); } };
+                const mgr = $('msg-open-mgr'); if (mgr) mgr.onclick = (ev) => { ev.preventDefault(); closeModal(); openEmailTemplateManager(); };
                 $('msg-att').onchange = prepare;
                 $('msg-copy').onclick = async () => { toast(await mfMsgCopy(text()) ? '✅ কপি হয়েছে' : '⚠️ কপি করা যায়নি — লেখা সিলেক্ট করে কপি করুন'); };
                 // app: 'wa' | 'fb' — প্রতিটি বাটন সবসময় নিজের অ্যাপের ওই সদস্যের চ্যাট খোলে (শেয়ার-মেনু শুধু "📤 শেয়ার মেনু" বাটনে)।
@@ -7388,6 +7423,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                     if (files.length) { if (canShareFiles(files)) data.files = files; else toast('ℹ️ এই ডিভাইসে ছবিসহ শেয়ার চলছে না — শুধু লেখা যাচ্ছে'); }
                     navigator.share(data).catch(() => {});   // ব্যবহারকারী বাতিল করলে কিছু নয়
                 };
+                updatePreview();
                 prepare();
             });
         };
