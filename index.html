@@ -2,7 +2,7 @@
 <html lang="bn">
 <head>
     <meta charset="UTF-8" />
-    <!-- 🆕 [v16.5.42] 💬 WhatsApp/Messenger মেসেজ বাটন (canSendEmail থাকলে ✉️-এর পাশে) + সদস্য-ফর্মে whatsapp/fbUsername ঘর — admin v16.5.40-এর সমান। Rules অপরিবর্তিত। [v16.5.43] 🧾 "রিসিপ্ট ছবি সংযুক্ত" টিক (ইমেইলের একই হিসাব-রিসিপ্ট JPG হয়ে শেয়ার/ডাউনলোড) + সদস্য-তালিকায় WhatsApp/Facebook কলাম। -->
+    <!-- 🆕 [v16.5.42] 💬 WhatsApp/Messenger মেসেজ বাটন (canSendEmail থাকলে ✉️-এর পাশে) + সদস্য-ফর্মে whatsapp/fbUsername ঘর — admin v16.5.40-এর সমান। Rules অপরিবর্তিত। [v16.5.43] 🧾 "রিসিপ্ট ছবি সংযুক্ত" টিক (ইমেইলের একই হিসাব-রিসিপ্ট JPG হয়ে শেয়ার/ডাউনলোড) + সদস্য-তালিকায় WhatsApp/Facebook কলাম। [v16.5.44] 💬 মেসেজে এডমিনের টেমপ্লেট-ম্যানেজারের সব টেমপ্লেট ও সিগনেচার ব্যবহারযোগ্য; WhatsApp/Messenger বাটন সরাসরি নিজ অ্যাপের চ্যাট খোলে, শেয়ার-মেনু আলাদা। -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content" />
     <title>সরদার হাট তাফসিরুল ওয়াজ মাহফিল — তহবিল ব্যবস্থাপনা (ইউজার প্যানেল)</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -7025,6 +7025,195 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
         // বার্ষিক তিনটা afterXRender হুকেই কল হবে
 
         // ======================================================================
+        //  🆕 [v16.5.43] এডমিনের টেমপ্লেট-ম্যানেজারের সব টেমপ্লেট (settings.emailTemplates.items) ও সিগনেচার (settings.signatures) —
+        //  এডমিন-প্যানেল থেকে হুবহু কপি (শুধু 💬 মেসেজ-মোডালে ব্যবহৃত; ইমেইল-মোডাল অপরিবর্তিত)। লেখার টোকেন ও সিগনেচার একই; ডেটা শুধু পড়া হয়, কিছু লেখা হয় না।
+        //  রিসিপ্ট নম্বর: এডমিন যা জারি করেছে (settings.receiptNoMap.assigned) সেটাই; নইলে পুরনো MF-XXXX — নতুন নম্বর এখান থেকে জারি হয় না।
+        // ======================================================================
+        const txnReceiptNo = (t) => {
+            const e = t && t.entry; if (!e) return '';
+            const mp = (state.settings && state.settings.receiptNoMap && state.settings.receiptNoMap.assigned) || {};
+            return mp[e.id] || txnReceiptNoLegacy(t);
+        };
+        const emailUsedTokens = () => [];
+        const PDF_TYPES = {
+            none: 'কোনো PDF নয়',
+            simple: 'সাধারণ রিসিপ্ট (এক পৃষ্ঠা)',
+            detailed: 'বিস্তারিত রিসিপ্ট',
+            monthly: 'মাসভিত্তিক হিসাবসহ রিসিপ্ট',
+            yearly: 'বার্ষিক/এককালীন অনুদানের রিসিপ্ট',
+            statement: 'বিস্তারিত হিসাব বিবরণী (সব লেনদেন)'
+        };
+        const txnReceiptNoLegacy = (t) => {
+            const id = t && t.entry && t.entry.id ? String(t.entry.id).replace(/[^A-Za-z0-9]/g, '').slice(0, 8).toUpperCase() : '';
+            return id ? 'MF-' + id : '';
+        };
+        const txnTime = (t) => Date.parse((t && t.entry && t.entry.date) || '') || 0;
+        // সদস্যের সব প্রকৃত লেনদেন (০ টাকার এন্ট্রি বাদ), নতুন থেকে পুরনো
+        const getMemberTxns = (memberId) => {
+            const mk = state.monthly.filter(r => r.memberId === memberId && Number(r.amount) > 0).map(e => ({ kind: 'monthly', entry: e }));
+            const yk = state.yearly.filter(r => r.memberId === memberId && Number(r.amount) > 0).map(e => ({ kind: 'yearly', entry: e }));
+            return mk.concat(yk).sort((a, b) => txnTime(b) - txnTime(a));
+        };
+        const txnMonthLabel = (monthKey) => {
+            const p = String(monthKey || '').split('-');
+            const mn = (state.settings && state.settings.monthNames) || CONFIG.DEFAULT_SETTINGS.monthNames || {};
+            if (!p[0]) return '';
+            return (mn[p[0]] || p[0]) + (p[1] ? ' ' + toBengaliNum(parseInt(p[1], 10) || p[1]) : '');
+        };
+        const fiscalYearOfMonthKey = (monthKey) => {
+            const p = String(monthKey || '').split('-'), y = parseInt(p[1], 10) || 0;
+            if (!y) return '';
+            const startName = (state.settings && state.settings.startMonth) || CONFIG.DEFAULT_SETTINGS.startMonth;
+            const sIdx = MONTH_NAMES_EN.indexOf(startName), mIdx = MONTH_NAMES_EN.indexOf(p[0]);
+            const fy = (mIdx !== -1 && sIdx !== -1 && mIdx < sIdx) ? y - 1 : y;
+            return fy + '-' + (fy + 1);
+        };
+        const txnTokens = (t) => {
+            const e = t && t.entry;
+            if (!e) return { receipt_no: '', txn_date: '', txn_amount: '', txn_method: '', txn_id: '', txn_collector: '', txn_kind: '' };
+            return {
+                receipt_no: txnReceiptNo(t), txn_date: fmtDate(e.date) || '', txn_amount: fmtMoney(e.amount),
+                txn_method: e.method || '', txn_id: e.id || '', txn_collector: e.collector || '',
+                txn_kind: t.kind === 'monthly' ? 'মাসিক' : 'বার্ষিক/এককালীন'
+            };
+        };
+        const EMAIL_ITEMS_MAX = 50;
+        const EMAIL_SYSTEM_TEMPLATES = () => [
+            { id: 'sys_general', system: true, name: '১. অনুদান গ্রহণ ও ধন্যবাদ (সাধারণ)', pdfType: 'simple',
+              subject: 'আপনার অনুদানের জন্য আন্তরিক ধন্যবাদ — {org_name}',
+              body: 'প্রিয় {member_name},\n\nআসসালামু আলাইকুম।\n\n"{org_name}"-এ আপনার অনুদান আমরা কৃতজ্ঞচিত্তে গ্রহণ করেছি। আপনার এই সহযোগিতার জন্য আন্তরিক ধন্যবাদ। মানি রিসিপ্ট এই ইমেইলের সাথে সংযুক্ত করা হলো।\n\nআল্লাহ তা\'আলা আপনাকে উত্তম প্রতিদান দান করুন।' },
+            { id: 'sys_monthly', system: true, name: '২. মাসিক অনুদান গ্রহণ (রিসিভ)', pdfType: 'monthly',
+              subject: '{month_name} মাসের অনুদান গ্রহণের রিসিপ্ট — {org_name}',
+              body: 'প্রিয় {member_name},\n\nআসসালামু আলাইকুম।\n\n"{org_name}"-এ আপনার {month_name} মাসের মাসিক অনুদান গ্রহণ করা হয়েছে। মাসভিত্তিক হিসাবসহ রিসিপ্ট এই ইমেইলের সাথে PDF আকারে সংযুক্ত করা হলো।\n\nআপনার নিয়মিত সহযোগিতার জন্য আন্তরিক ধন্যবাদ।' },
+            { id: 'sys_monthly_due', system: true, name: '৩. মাসিক বকেয়া স্মরণ', pdfType: 'none',
+              subject: '{month_name} মাসের অনুদান — সবিনয় স্মরণ — {org_name}',
+              body: 'প্রিয় {member_name},\n\nআসসালামু আলাইকুম।\n\nআমরা লক্ষ্য করেছি {month_name} মাসের অনুদান এখনো পাওয়া যায়নি। সুবিধাজনক সময়ে পরিশোধ করার জন্য সবিনয় অনুরোধ জানাচ্ছি। ইতোমধ্যে পরিশোধ করে থাকলে এই বার্তা উপেক্ষা করুন।\n\nবিগত মাসগুলোর হিসাব:\n{history}' },
+            { id: 'sys_monthly_detail', system: true, name: '৪. সকল মাসের হিসাব (বিস্তারিত বিবরণী)', pdfType: 'statement',
+              subject: 'আপনার অনুদানের সকল মাসের হিসাব — {org_name}',
+              body: 'প্রিয় {member_name},\n\nআসসালামু আলাইকুম।\n\n"{org_name}"-এ আপনার এখন পর্যন্ত অনুদানের সংক্ষিপ্ত হিসাব:\n• মোট অনুদান: {total_amount}\n• মোট কতবার দিয়েছেন: {donation_count} বার\n\nমাসভিত্তিক হিসাব:\n{history}\n\nবিস্তারিত হিসাব-বিবরণী PDF আকারে সংযুক্ত করা হলো।' },
+            { id: 'sys_annual', system: true, name: '৫. বার্ষিক অনুদান গ্রহণ (রিসিভ)', pdfType: 'yearly',
+              subject: 'বার্ষিক অনুদানের রিসিপ্ট — {org_name}',
+              body: 'প্রিয় {member_name},\n\nআসসালামু আলাইকুম।\n\n"{org_name}"-এ আপনার বার্ষিক অনুদান কৃতজ্ঞচিত্তে গ্রহণ করা হয়েছে। রিসিপ্ট PDF আকারে সংযুক্ত করা হলো।\n\nআল্লাহ তা\'আলা আপনার দান কবুল করুন।' },
+            { id: 'sys_onetime', system: true, name: '৬. এককালীন অনুদান গ্রহণ', pdfType: 'yearly',
+              subject: 'এককালীন অনুদানের রিসিপ্ট — {org_name}',
+              body: 'প্রিয় {member_name},\n\nআসসালামু আলাইকুম।\n\n"{org_name}"-এ আপনার এককালীন অনুদান আমরা কৃতজ্ঞচিত্তে গ্রহণ করেছি। রিসিপ্ট PDF আকারে সংযুক্ত করা হলো।\n\nজাজাকাল্লাহু খাইরান।' },
+            { id: 'sys_complete', system: true, requireFull: true, name: '৭. অভিনন্দন — অর্থবছরের সব মাস পূর্ণ পরিশোধ', pdfType: 'statement',
+              subject: 'অভিনন্দন! {year_name} অর্থবছরের অনুদান আপনি পূর্ণ করেছেন — {org_name}',
+              body: 'প্রিয় {member_name},\n\nআসসালামু আলাইকুম।\n\nআলহামদুলিল্লাহ! আপনি {year_name} অর্থবছরের সকল মাসের অনুদান সম্পূর্ণ পরিশোধ করেছেন — এজন্য আন্তরিক অভিনন্দন ও কৃতজ্ঞতা। আপনার এই নিষ্ঠা আমাদের কাজে বড় শক্তি।\n\nমাসভিত্তিক হিসাব:\n{history}\n\nআল্লাহ তা\'আলা আপনার জান-মালে বরকত দান করুন, আমিন।' },
+            { id: 'sys_partial', system: true, name: '৮. আংশিক পরিশোধ গ্রহণ ও বাকির স্মরণ', pdfType: 'simple',
+              subject: '{month_name} মাসের আংশিক অনুদান গ্রহণ — {org_name}',
+              body: 'প্রিয় {member_name},\n\nআসসালামু আলাইকুম।\n\n{month_name} মাসের অনুদান বাবদ আপনার {paid_amount} গ্রহণ করা হয়েছে, ধন্যবাদ। এ মাসে বাকি আছে {due_amount}। সুবিধামতো সময়ে পরিশোধ করলে কৃতজ্ঞ থাকব।' },
+            { id: 'sys_welcome', system: true, name: '৯. নতুন সদস্যকে স্বাগত', pdfType: 'none',
+              subject: 'স্বাগতম — {org_name}',
+              body: 'প্রিয় {member_name},\n\nআসসালামু আলাইকুম।\n\n"{org_name}" পরিবারে আপনাকে আন্তরিক স্বাগত। আপনার সদস্য আইডি: {member_id}। যেকোনো প্রয়োজনে যোগাযোগ করুন: {org_contact}।\n\nআপনার সহযোগিতা ও দোয়া কামনা করছি।' },
+            { id: 'sys_custom', system: true, name: '১০. কাস্টম ইমেইল ও রিসিপ্ট', pdfType: 'simple',
+              subject: '{org_name} — আপনার জন্য বার্তা',
+              body: 'প্রিয় {member_name},\n\nআসসালামু আলাইকুম।\n\n' }
+        ];
+        const normEmailItem = (x) => {
+            x = x || {};
+            const bool = (v, d) => (v === undefined || v === null) ? d : v === true;
+            const sm = x.summary || {}, ps = x.pdfShow || {};
+            return {
+                id: String(x.id || ''), name: String(x.name || '').slice(0, 60), subject: String(x.subject || '').slice(0, 200), body: String(x.body || '').slice(0, 8000),
+                pdfType: PDF_TYPES[x.pdfType] ? x.pdfType : 'none', pdfStyle: x.pdfStyle === 'classic' ? 'classic' : 'money', requireFull: x.requireFull === true, active: x.active !== false, system: x.system === true,
+                includeSignature: x.includeSignature !== false,
+                summary: { receiptNo: bool(sm.receiptNo, true), date: bool(sm.date, true), amount: bool(sm.amount, true), method: bool(sm.method, true), collector: bool(sm.collector, false) },
+                pdfShow: { method: bool(ps.method, true), collector: bool(ps.collector, true), history: bool(ps.history, true), total: bool(ps.total, true), address: bool(ps.address, true), contact: bool(ps.contact, true), thanks: bool(ps.thanks, true) },
+                createdAt: String(x.createdAt || ''), updatedAt: String(x.updatedAt || '')
+            };
+        };
+        // সংরক্ষিত তালিকা না থাকলে ৬টি সিস্টেম-টেমপ্লেট (সংরক্ষণ না হওয়া পর্যন্ত মেমোরিতে; প্রতিবার একই ফল)।
+        // তালিকা থাকলে সেটাই; সিস্টেম-টেমপ্লেট (মোছা নিষিদ্ধ) কোনোভাবে হারালে ফিরিয়ে দেওয়া হয়।
+        const getEmailItems = () => {
+            const et = (state.settings && state.settings.emailTemplates) || {};
+            const raw = Array.isArray(et.items) ? et.items.filter(x => x && x.id) : null;
+            const list = raw ? raw.map(normEmailItem) : EMAIL_SYSTEM_TEMPLATES().map(normEmailItem);
+            if (raw) EMAIL_SYSTEM_TEMPLATES().forEach(s => { if (!list.some(x => x.id === s.id)) list.push(normEmailItem(s)); });
+            return list;
+        };
+        const emailSummaryBlock = (it, data) => {
+            const s = it.summary || {}, lines = [];
+            if (s.receiptNo && data.receipt_no) lines.push('• রিসিপ্ট নং: ' + data.receipt_no);
+            if (s.date && data.txn_date) lines.push('• তারিখ: ' + data.txn_date);
+            if (s.amount && data.txn_amount) lines.push('• পরিমাণ: ' + data.txn_amount);
+            if (s.method && data.txn_method) lines.push('• পরিশোধের মাধ্যম: ' + data.txn_method);
+            if (s.collector && data.txn_collector) lines.push('• সংগ্রাহক: ' + data.txn_collector);
+            return lines.length ? '\n\nলেনদেনের বিবরণ:\n' + lines.join('\n') : '';
+        };
+        // একজন সদস্য (+ঐচ্ছিক লেনদেন/মাস) থেকে ইমেইলের সব টোকেনের মান
+        const emailDataFor = (m, monthKey, txn) => {
+            const data = Object.assign(baseEmailData(m), txnTokens(txn));
+            let mk = monthKey;
+            if (txn && txn.kind === 'monthly' && txn.entry.month) mk = txn.entry.month;
+            if (mk) {
+                const entry = getMonthlyEntry(m.id, mk), paidNow = entry && Number(entry.amount) > 0;
+                const mn = (state.settings && state.settings.monthNames) || CONFIG.DEFAULT_SETTINGS.monthNames || {}, mp = String(mk).split('-');
+                data.month_name = (mn[mp[0]] || mp[0]) + (mp[1] ? ' ' + mp[1] : '');
+                data.paid_amount = paidNow ? fmtMoney(entry.amount) : '';
+                data.payment_method = paidNow ? (entry.method || '') : '';
+                const willing = m.willingMonthly ? Number(m.willingMonthlyAmount) || 0 : 0;
+                data.due_amount = willing > 0 ? fmtMoney(Math.max(willing - (paidNow ? Number(entry.amount) || 0 : 0), 0)) : '';
+                const fy = fiscalYearOfMonthKey(mk); if (fy) data.year_name = fy;
+            }
+            return data;
+        };
+        // ম্যানেজার-তালিকার টেমপ্লেট → { subject, body, warnings }
+        const composeEmailItem = (it, m, monthKey, txn, sigOverride) => {
+            const et = getEmailTemplates();
+            const data = emailDataFor(m, monthKey, txn);
+            const subject = fillEmailPlaceholders(it.subject, data);
+            const body = fillEmailPlaceholders(it.body, data) + emailSummaryBlock(it, data) +
+                (it.includeSignature !== false ? sigBlock('i:' + it.id, data, sigOverride) : '');
+            const warnings = [];
+            emailUsedTokens(it.subject + '\n' + it.body).forEach(t => { if (data[t] === '' || data[t] === undefined || data[t] === null) warnings.push('"{' + t + '}"-এর ডেটা নেই — ফাঁকা বসবে'); });
+            if (it.requireFull) {
+                const fy = data.year_name, months = /^\d{4}-\d{4}$/.test(fy || '') ? getMonthsForYear(fy) : [];
+                const full = months.length && months.every(mo => { const en = getMonthlyEntry(m.id, mo.key); return en && Number(en.amount) > 0; });
+                if (!full) warnings.push('এই সদস্যের ' + (fy || 'এই') + ' অর্থবছরের সব মাস পরিশোধিত নয় — "পূর্ণ পরিশোধ" অভিনন্দন পাঠানো ঠিক হবে না');
+            }
+            return { subject, body, warnings };
+        };
+        const SIG_MAX = 10, SIG_IMG_MAX_CHARS = 150000;
+        const normSig = (x) => {
+            x = x || {};
+            return {
+                id: String(x.id || ''), name: String(x.name || '').slice(0, 60), emailText: String(x.emailText || '').slice(0, 1500),
+                approver: String(x.approver || '').slice(0, 80), title: String(x.title || '').slice(0, 80),
+                image: (typeof x.image === 'string' && /^data:image\/(png|jpeg|webp);base64,/.test(x.image) && x.image.length <= SIG_IMG_MAX_CHARS) ? x.image : '',
+                active: x.active !== false, updatedAt: String(x.updatedAt || '')
+            };
+        };
+        const getSigStore = () => {
+            const s = (state.settings && state.settings.signatures) || {};
+            return {
+                items: Array.isArray(s.items) ? s.items.filter(x => x && x.id).slice(0, SIG_MAX).map(normSig) : [],
+                defaultId: String(s.defaultId || ''), tplMap: (s.tplMap && typeof s.tplMap === 'object') ? Object.assign({}, s.tplMap) : {}
+            };
+        };
+        const resolveSig = (tplKey, override) => {
+            const st = getSigStore();
+            let id = (override && override !== 'tpl') ? override : (st.tplMap[tplKey] || st.defaultId || '');
+            if (id === 'none') return { id: 'none', none: true };
+            const it = st.items.find(x => x.id === id && x.active);
+            return it ? it : { id: '', legacy: true };
+        };
+        // ইমেইলে বসার লেখা: legacy হলে null (আগের শেয়ার্ড সিগনেচার), none হলে ''
+        const sigEmailText = (sig, data) => {
+            if (!sig || sig.legacy) return null;
+            if (sig.none) return '';
+            let t = (sig.emailText || '').trim();
+            if (!t) t = [sig.approver, sig.title].filter(Boolean).join('\n');
+            return fillEmailPlaceholders(t, data);
+        };
+        const sigBlock = (tplKey, data, override) => {
+            const t = sigEmailText(resolveSig(tplKey, override), data);
+            const txt = t === null ? fillEmailPlaceholders(getEmailTemplates().signature, data) : t;
+            return txt && txt.trim() ? '\n\n' + txt : '';
+        };
+        // বিল্ট-ইন (পুরনো) টেমপ্লেটের তৈরি বডির শেষের শেয়ার্ড সিগনেচার বদলে নির্বাচিত সিগনেচার বসানো
+
+        // ======================================================================
         //  🆕 [v16.5.40/41] ফ্রি WhatsApp / Messenger শেয়ার — কোনো API/টোকেন/খরচ নেই।
         //  💬 বাটন → মেসেজ-মোডাল (ইমেইলের একই টেমপ্লেট থেকে লেখা, এডিট করা যায়) → "WhatsApp" (wa.me, লেখা প্রি-ফিল)
         //  / "Messenger" (m.me; লেখা আগে কপি হয়, চ্যাটে পেস্ট করতে হয় — m.me প্রি-ফিল সমর্থন করে না) / "শেয়ার মেনু"।
@@ -7093,17 +7282,21 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             };
             // 🧾 রিসিপ্ট-ছবি: ইমেইল-মোডালের pdfTypeFor()/generatePdfForType() যুক্তির হুবহু প্রতিলিপি (শুধু আউটপুট PDF-এর বদলে JPG)।
             // জবাব: { file } | { none:'কারণ' }
+            const receiptPlan = (key) => {
+                let type = 'none', item = null, legacy = '';
+                if (/^t:/.test(key)) { item = items.find(x => 't:' + x.id === key) || null; type = item ? (item.pdfType || 'none') : 'none'; }
+                else {
+                    legacy = key === '__default__' ? defaultTplKey : key;
+                    const setting = (et[legacy] && et[legacy].attachPdf) || 'auto';
+                    type = setting === 'always' ? 'statement' : setting === 'never' ? 'none' : (donor ? 'statement' : 'none');
+                }
+                return { type, item, legacy };
+            };
             const buildReceipt = async (key) => {
                 const fname = (typeof sanitizeFileName === 'function' ? sanitizeFileName('রিসিপ্ট-' + m.name) : 'receipt') + '.jpg';
-                if (typeof generateJpgForType === 'function') {
-                    let type = 'none', item = null, legacy = '';
-                    if (/^t:/.test(key)) { item = items.find(x => 't:' + x.id === key) || null; type = item ? (item.pdfType || 'none') : 'none'; }
-                    else {
-                        legacy = key === '__default__' ? defaultTplKey : key;
-                        const setting = (et[legacy] && et[legacy].attachPdf) || 'auto';
-                        type = setting === 'always' ? 'statement' : setting === 'never' ? 'none' : (donor ? 'statement' : 'none');
-                    }
-                    if (type === 'none') return { none: 'এই টেমপ্লেটে ইমেইলে রিসিপ্ট এটাচ হয় না, তাই ছবিও যাবে না' };
+                const { type, item, legacy } = receiptPlan(key);
+                if (type === 'none') return { none: 'এই টেমপ্লেটে ইমেইলে রিসিপ্ট এটাচ হয় না, তাই ছবিও যাবে না' };
+                if (typeof generateJpgForType === 'function') {   // admin: ইমেইলের হুবহু একই রিসিপ্ট-ধরন/ডিজাইন/সিগনেচার
                     const txn = latestTxn();
                     if (PDF_NEEDS_TXN[type] && !txn) return { none: 'এই সদস্যের কোনো লেনদেন নেই, তাই রিসিপ্ট-ছবি হবে না' };
                     if (type === 'monthly' && txn.kind !== 'monthly') return { none: 'মাসভিত্তিক রিসিপ্টের জন্য মাসিক লেনদেন নেই' };
@@ -7112,12 +7305,12 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                     const url = await withPdfSig(sig, () => generateJpgForType(type, m, txn, item ? item.pdfShow : null, item ? item.pdfStyle : 'money'));
                     return { file: new File([mfMsgDataUrlToBlob(url)], fname, { type: 'image/jpeg' }) };
                 }
-                // personal: ইমেইলে যে হিসাব-রিসিপ্ট যায় (generateReceiptPdfBase64) — একই ক্যানভাস থেকে JPG নেওয়া হয়
+                // personal: এই প্যানেলে ইমেইলে যে হিসাব-রিসিপ্ট (generateReceiptPdfBase64) যায় — একই ক্যানভাস থেকে JPG নেওয়া হয়
                 const sink = { canvas: null }; window.__mfImgSink = sink;
                 try { await generateReceiptPdfBase64(m); } finally { window.__mfImgSink = null; }
                 if (!sink.canvas) throw new Error('রিসিপ্ট ছবি তৈরি হয়নি');
                 const blob = await new Promise((res, rej) => sink.canvas.toBlob(b => b ? res(b) : rej(new Error('ছবি তৈরি হয়নি')), 'image/jpeg', 0.92));
-                return { file: new File([blob], fname, { type: 'image/jpeg' }) };
+                return { file: new File([blob], fname, { type: 'image/jpeg' }), note: type === 'statement' ? '' : ' — সব লেনদেনের হিসাব-রিসিপ্ট' };
             };
             const wa = mfMsgWaNumber(m.whatsapp || m.mobile), fb = mfMsgFbHandle(m.fbUsername);
             let initial = '';
@@ -7140,7 +7333,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                 <button class="btn btn-outline" id="msg-fb">Messenger</button>
                 <button class="btn btn-primary" id="msg-wa">WhatsApp</button>
               </div>
-              <div class="small muted" style="margin-top:8px;line-height:1.5;">• ছবি ছাড়া: WhatsApp-এ লেখা সরাসরি বসে যায়; Messenger-এ লেখা কপি হয়ে চ্যাট খোলে, সেখানে পেস্ট করে সেন্ড করুন। • ছবিসহ (ফোন): WhatsApp/Messenger বাটনে ফোনের শেয়ার-মেনু খুলবে — সেখানে WhatsApp বা Messenger বেছে নিন। • ছবিসহ (কম্পিউটার): ছবি ডাউনলোড হয়ে চ্যাট খোলে — চ্যাটে 📎 দিয়ে ছবিটি দিন।</div>
+              <div class="small muted" style="margin-top:8px;line-height:1.5;">• <strong>WhatsApp / Messenger</strong>: ওই সদস্যের চ্যাট সরাসরি খোলে (WhatsApp-এ লেখা বসে যায়; Messenger-এ লেখা কপি হয়, পেস্ট করুন)। টিক থাকলে ছবি আগে ডাউনলোড হয় — চ্যাটে 📎 দিয়ে দিন। • <strong>📤 শেয়ার মেনু</strong>: ফোনের শেয়ার-মেনুতে লেখা ও ছবি একসাথে যায় — সেখান থেকে অ্যাপ ও কন্টাক্ট নিজে বাছতে হয়।</div>
             `, () => {
                 const $ = id => document.getElementById(id);
                 const text = () => $('msg-body').value.trim();
@@ -7154,7 +7347,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                     try { r = await buildReceipt($('msg-tpl').value); } catch (e) { console.error(e); r = { err: (e && e.message) || 'ছবি তৈরি হয়নি' }; }
                     if (my !== seq || !$('msg-att')) return;   // টেমপ্লেট/টিক বদলে গেছে বা মোডাল বন্ধ
                     rcptBusy = false; rcpt = r;
-                    setSt(r.file ? '✅ রিসিপ্ট-ছবি প্রস্তুত (' + Math.max(1, Math.round(r.file.size / 1024)) + ' KB)' : r.none ? 'ℹ️ ' + r.none : '⚠️ রিসিপ্ট-ছবি তৈরি হয়নি: ' + r.err);
+                    setSt(r.file ? '✅ রিসিপ্ট-ছবি প্রস্তুত (' + Math.max(1, Math.round(r.file.size / 1024)) + ' KB)' + (r.note || '') : r.none ? 'ℹ️ ' + r.none : '⚠️ রিসিপ্ট-ছবি তৈরি হয়নি: ' + r.err);
                 };
                 // পাঠানোর ফাইল-তালিকা: টিক থাকলে রিসিপ্ট + নিজে বাছা অতিরিক্ত ছবি। null = এখনো তৈরি হচ্ছে
                 const filesNow = () => {
@@ -7169,21 +7362,14 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                 $('msg-tpl').onchange = () => { try { $('msg-body').value = compose($('msg-tpl').value); } catch (e) { toast('⚠️ টেমপ্লেট তৈরি করা যায়নি'); } prepare(); };
                 $('msg-att').onchange = prepare;
                 $('msg-copy').onclick = async () => { toast(await mfMsgCopy(text()) ? '✅ কপি হয়েছে' : '⚠️ কপি করা যায়নি — লেখা সিলেক্ট করে কপি করুন'); };
-                // app: 'wa' | 'fb'
+                // app: 'wa' | 'fb' — প্রতিটি বাটন সবসময় নিজের অ্যাপের ওই সদস্যের চ্যাট খোলে (শেয়ার-মেনু শুধু "📤 শেয়ার মেনু" বাটনে)।
+                // রিসিপ্ট-ছবি থাকলে আগে ফোনে/কম্পিউটারে ডাউনলোড হয় — চ্যাটে 📎 দিয়ে দিতে হয় (ওয়েব থেকে সরাসরি চ্যাটে ছবি বসানোর উপায় নেই)।
                 const go = (app) => {
                     const t = text(); if (!t) { toast('মেসেজ খালি'); return; }
                     const files = filesNow();
                     if (files === null) { toast('⏳ রিসিপ্ট-ছবি তৈরি হচ্ছে — একটু পরে আবার চাপুন'); return; }
                     if (app === 'fb' && !fb) { toast('⚠️ Facebook ইউজারনেম নেই — আগে "✎ সম্পাদনা" থেকে যোগ করুন'); return; }
-                    if (files.length) {
-                        if (mfMsgIsMobile() && canShareFiles(files)) {   // ফোন: শেয়ার-মেনু (একমাত্র উপায় যাতে ছবি WhatsApp/Messenger-এ যায়)
-                            toast('📤 শেয়ার-মেনু থেকে ' + (app === 'wa' ? 'WhatsApp' : 'Messenger') + ' বেছে নিন');
-                            navigator.share({ text: t, files }).catch(() => {});
-                            return;
-                        }
-                        files.forEach(f => mfMsgDownloadFile(f));   // কম্পিউটার/অসমর্থিত: ছবি ডাউনলোড + চ্যাট খোলা
-                        toast('🖼️ ছবি ডাউনলোড হয়েছে — চ্যাটে 📎 দিয়ে দিন');
-                    }
+                    if (files.length) { files.forEach(f => mfMsgDownloadFile(f)); toast('🖼️ ছবি ডাউনলোড হয়েছে — চ্যাটে 📎 → গ্যালারি/ডাউনলোড থেকে ছবিটি দিন' + (app === 'fb' ? '; লেখা কপি করা আছে, পেস্ট করুন' : '')); }
                     if (app === 'wa') {
                         if (!wa) toast('ℹ️ WhatsApp নম্বর নেই — কন্টাক্ট বেছে নিন');
                         mfMsgOpen('https://wa.me/' + wa + '?text=' + encodeURIComponent(t));
