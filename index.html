@@ -2,6 +2,7 @@
 <html lang="bn">
 <head>
     <meta charset="UTF-8" />
+    <!-- 🔧 [v16.5.46] ব্যক্তিগত মেসেজ "লোড হচ্ছে..."-তে আটকানোর মূল কারণ ঠিক (মোডাল খোলার সময় closeDmChat থ্রেড-আইডি মুছে দিত) + তার সঙ্গে: ৭ সেকেন্ড ওয়াচডগ + আসল ত্রুটি-কারণ ও "আবার চেষ্টা" বাটন + ভাঙা মেসেজে রেন্ডার-সুরক্ষা। -->
     <!-- 🆕 [v16.5.42] 💬 WhatsApp/Messenger মেসেজ বাটন (canSendEmail থাকলে ✉️-এর পাশে) + সদস্য-ফর্মে whatsapp/fbUsername ঘর — admin v16.5.40-এর সমান। Rules অপরিবর্তিত। [v16.5.43] 🧾 "রিসিপ্ট ছবি সংযুক্ত" টিক (ইমেইলের একই হিসাব-রিসিপ্ট JPG হয়ে শেয়ার/ডাউনলোড) + সদস্য-তালিকায় WhatsApp/Facebook কলাম। [v16.5.44] 💬 মেসেজে এডমিনের টেমপ্লেট-ম্যানেজারের সব টেমপ্লেট ও সিগনেচার ব্যবহারযোগ্য; WhatsApp/Messenger বাটন সরাসরি নিজ অ্যাপের চ্যাট খোলে, শেয়ার-মেনু আলাদা। [v16.5.45] 💬 মোডালে টেমপ্লেটের নিচে "👁️ সব টেমপ্লেটের প্রিভিউ" লিংক + মেসেজ/ছবির লাইভ প্রিভিউ (এডমিনের মতো)। -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content" />
     <title>সরদার হাট তাফসিরুল ওয়াজ মাহফিল — তহবিল ব্যবস্থাপনা (ইউজার প্যানেল)</title>
@@ -11016,6 +11017,11 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                 <button class="btn btn-primary btn-send" id="dm-send-btn">📨 পাঠান</button>
               </div>
             `, () => {
+                // 🔧 [v16.5.46 মূল কারণ-সংশোধন] openModal() শুরুতেই closeModal() চালায়, আর সেটা closeDmChat() ডেকে dmCurrentThreadId/dmOtherEmail খালি (null) করে দেয় —
+                // ফলে নিচের লিসেনার খালি থ্রেডে চলে ব্যর্থ হতো ও "লোড হচ্ছে..." আটকে থাকত। তাই মোডাল বসার *পরে* মান আবার বসানো হলো।
+                dmCurrentThreadId = tid;
+                dmOtherEmail = otherEmail;
+                dmOtherLastReadAt = null; _dmLastRenderedMsgs = null;
                 const input = document.getElementById('dm-input');
                 const sendBtn = document.getElementById('dm-send-btn');
                 if (input) {
@@ -11080,26 +11086,58 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             }, () => {});
         };
 
+        // 🔧 [v16.5.46] ব্যক্তিগত মেসেজ "লোড হচ্ছে..."-তে আটকে যাওয়া ঠেকাতে: (১) প্রথম ডেটা ৭ সেকেন্ডে না এলে সরাসরি একবার ডেটা এনে দেখানো (getDocs),
+        // (২) যেকোনো ব্যর্থতায় পর্দায় আসল কারণ (কোড) + "আবার চেষ্টা" বাটন, (৩) রেন্ডারে কোনো মেসেজ ভাঙলেও বাকিগুলো দেখানো। পুরনো আচরণ (রিয়েল-টাইম লিসেনার) অপরিবর্তিত।
+        const dmShowError = (err, retry) => {
+            const box = document.getElementById('dm-messages'); if (!box) return;
+            const code = (err && err.code) || '';
+            const hint = /permission/i.test(code + ' ' + ((err && err.message) || '')) ? 'এই চ্যাট দেখার অনুমতি পাওয়া যায়নি — আপনার অ্যাকাউন্ট "সক্রিয়" কিনা এডমিনের কাছে দেখে নিন।'
+                : /unavailable|network|offline/i.test(code + ' ' + ((err && err.message) || '')) ? 'ইন্টারনেট সংযোগ ঠিক আছে কিনা দেখুন।' : '';
+            box.innerHTML = '<div class="small" style="padding:16px;text-align:center;color:#b3261e;">❌ মেসেজ লোড করা যায়নি' + (code ? ' (' + escapeHtml(code) + ')' : '') + (hint ? '<div class="muted" style="margin-top:6px;">' + escapeHtml(hint) + '</div>' : '') +
+                '<div style="margin-top:10px;"><button type="button" class="btn btn-outline btn-sm" id="dm-retry">🔄 আবার চেষ্টা করুন</button></div></div>';
+            const b = document.getElementById('dm-retry'); if (b) b.onclick = () => { box.innerHTML = '<div class="small muted" style="padding:16px;text-align:center;">লোড হচ্ছে...</div>'; retry(); };
+        };
         const listenDmMessages = () => {
             if (dmUnsub) { try { dmUnsub(); } catch (e) {} }
-            const { collection, query, orderBy, onSnapshot } = window._firestore;
-            const q = query(collection(window._firestoreDb, 'dm_threads', dmCurrentThreadId, 'messages'), orderBy(
-                'timestamp'));
-            dmUnsub = onSnapshot(q, snap => {
-                const msgs = [];
-                snap.forEach(d => msgs.push({ id: d.id, ...d.data() }));
-                _dmLastRenderedMsgs = msgs; // 🆕 [ব্লু-টিক]
-                renderDmMessages(msgs);
-                markDmThreadRead(); // 🆕 [ব্লু-টিক] থ্রেড খোলা অবস্থায় নতুন মেসেজ এলেও তা সাথে সাথে "পঠিত" গণ্য হবে
-            }, (err) => {
+            const { collection, query, orderBy, onSnapshot, getDocs } = window._firestore;
+            const tid = dmCurrentThreadId;
+            const q = query(collection(window._firestoreDb, 'dm_threads', tid, 'messages'), orderBy('timestamp'));
+            let got = false;
+            const onMsgs = (snap) => {
+                got = true;
+                try {
+                    const msgs = [];
+                    snap.forEach(d => msgs.push({ id: d.id, ...d.data() }));
+                    _dmLastRenderedMsgs = msgs; // 🆕 [ব্লু-টিক]
+                    renderDmMessages(msgs);
+                    markDmThreadRead(); // 🆕 [ব্লু-টিক] থ্রেড খোলা অবস্থায় নতুন মেসেজ এলেও তা সাথে সাথে "পঠিত"
+                } catch (e) { console.error('[DM] রেন্ডার ব্যর্থ:', e); dmShowError(e, listenDmMessages); }
+            };
+            const onErr = (err) => {
+                got = true;
                 console.error('[DM] মেসেজ লোড ব্যর্থ:', err);
-                const box = document.getElementById('dm-messages');
-                if (box) box.innerHTML = '<div class="small muted" style="padding:16px;text-align:center;">❌ মেসেজ লোড করা যায়নি: ' + escapeHtml((err && err.message) || 'অজানা এরর') + '</div>';
+                dmShowError(err, listenDmMessages);
                 toast('মেসেজ লোড করা যায়নি: ' + ((err && err.message) || 'অজানা এরর'));
-            });
+            };
+            dmUnsub = onSnapshot(q, onMsgs, onErr);
+            setTimeout(async () => {   // ওয়াচডগ: ৭ সেকেন্ডেও কিছু না এলে একবার সরাসরি আনা
+                if (got || dmCurrentThreadId !== tid) return;
+                try { const snap = await getDocs(q); if (!got && dmCurrentThreadId === tid) onMsgs(snap); }
+                catch (e) { if (!got && dmCurrentThreadId === tid) onErr(e); }
+            }, 7000);
         };
 
         const renderDmMessages = (msgs) => {
+            try { return _renderDmMessagesRaw(msgs); }
+            catch (e) {   // 🔧 [v16.5.46] কোনো একটি মেসেজের ডেটা অস্বাভাবিক হলেও পুরো চ্যাট যেন আটকে না যায় — সাদামাটা তালিকা দেখানো
+                console.error('[DM] রেন্ডার ব্যর্থ, সাদামাটা তালিকা:', e);
+                const el = document.getElementById('dm-messages'); if (!el) return;
+                const me = window.currentUser.email;
+                el.innerHTML = (msgs || []).map(m => `<div class="chat-msg ${m.sender === me ? 'me' : 'other'}"><div class="msg-text">${escapeHtml(String(m.text || (m.imageUrl ? '📷 ছবি' : '')))}</div></div>`).join('') || '<div class="small muted" style="padding:16px;text-align:center;">এখনো কোনো মেসেজ নেই</div>';
+                el.scrollTop = el.scrollHeight;
+            }
+        };
+        const _renderDmMessagesRaw = (msgs) => {
             const el = document.getElementById('dm-messages');
             if (!el) return;
             const myEmail = window.currentUser.email;
