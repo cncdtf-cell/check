@@ -2,6 +2,7 @@
 <html lang="bn">
 <head>
     <meta charset="UTF-8" />
+    <!-- 🆕 [v16.5.49] এডমিনের মতো এক-পেজ রিসিপ্ট (সাধারণ/বিস্তারিত/মাসভিত্তিক/বার্ষিক/হিসাব-বিবরণী) — ইমেইল ও 💬 WhatsApp/Messenger উভয়ে; "রিসিপ্ট" বা "ক্লাসিক" ফর্ম বাছাই; ইমেইলে 📚 টেমপ্লেটও; 💬 মডাল গোছানো। Rules/সার্ভার অপরিবর্তিত। -->
     <!-- 🆕 [v16.5.48] DM-এ ➡️ ফরওয়ার্ড (ওভারলে, ব্যবহারকারী বাছাই) + দিনের বিভাজক ("আজ/গতকাল/তারিখ") যোগ। -->
     <!-- 🆕 [v16.5.47] ব্যক্তিগত মেসেজে (DM) রিয়্যাক্ট · উত্তর · পিন · কপি · এডিট · মুছুন — রিয়্যাকশন/পিন থ্রেড-ডকে; Rules অপরিবর্তিত। -->
     <!-- 🔧 [v16.5.46] ব্যক্তিগত মেসেজ "লোড হচ্ছে..."-তে আটকানোর মূল কারণ ঠিক (মোডাল খোলার সময় closeDmChat থ্রেড-আইডি মুছে দিত) + তার সঙ্গে: ৭ সেকেন্ড ওয়াচডগ + আসল ত্রুটি-কারণ ও "আবার চেষ্টা" বাটন + ভাঙা মেসেজে রেন্ডার-সুরক্ষা। -->
@@ -6379,14 +6380,14 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
         // 🆕 html2canvas দিয়ে তৈরি ক্যানভাসকে PDF-এ রূপান্তর করে base64 স্ট্রিং হিসেবে ফেরত দেয়
         // (বাংলা টেক্সট ঠিকমতো দেখানোর জন্য jsPDF-এর টেক্সট-মোডের বদলে ইমেজ হিসেবে বসানো হয়,
         //  যেহেতু jsPDF-এর ডিফল্ট ফন্টে বাংলা ইউনিকোড সাপোর্ট নেই)
-        const canvasToPdfBase64 = async (canvas) => {
+        const canvasToPdfBase64 = async (canvas, quality) => {
             if (window.__mfImgSink) { window.__mfImgSink.canvas = canvas; return ''; }   // 🆕 [v16.5.43] 💬 মেসেজ-মোডাল: একই ক্যানভাস থেকে JPG নেওয়ার জন্য (সাধারণ সময় নিষ্ক্রিয়)
             await ensureJsPDF();
             const { jsPDF } = window.jspdf;
             // 🔧 [v16.5.12] আগে orientation না দেওয়ায় চওড়া (landscape-আকার) রিসিপ্টে jsPDF পেজের দৈর্ঘ্য-প্রস্থ উল্টে দিত,
             // ফলে ছবির ডান ও নিচের অংশ কেটে যেত। এখন ছবির আকার অনুযায়ী orientation স্পষ্ট করে দেওয়া হলো।
             const pdf = new jsPDF({ unit: 'px', format: [canvas.width, canvas.height], orientation: canvas.width > canvas.height ? 'landscape' : 'portrait', compress: true });
-            pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, canvas.width, canvas.height);
+            pdf.addImage(canvas.toDataURL('image/jpeg', quality || 0.95), 'JPEG', 0, 0, canvas.width, canvas.height);
             const dataUri = pdf.output('datauristring');
             return dataUri.split(',')[1]; // শুধু base64 অংশ
         };
@@ -6410,7 +6411,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                 c.width = Math.min(1400, Math.max(480, parseInt(c.width, 10) || RECEIPT_DEFAULTS.width));
                 c.fontSize = Math.min(22, Math.max(11, parseInt(c.fontSize, 10) || RECEIPT_DEFAULTS.fontSize));
                 c.accent = /^#[0-9a-fA-F]{6}$/.test(String(c.accent || '')) ? c.accent : '';
-                return c;
+                return rcNormalize(c);   // 🆕 [v16.5.49] টেবিল-স্টাইল/কলাম (এডমিনের সেটিংস)
             };
             window.getReceiptCfg = getReceiptCfg;
             const buildReceiptHtml = async (m) => {
@@ -6481,6 +6482,315 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                 capture.remove();
             }
         };
+
+
+        // ======================================================================
+        //  🆕 [v16.5.49] এডমিনের এক-পেজ রিসিপ্ট ইঞ্জিন (সাধারণ/বিস্তারিত/মাসভিত্তিক/বার্ষিক; "রিসিপ্ট" ও "ক্লাসিক" ফর্ম) — এডমিন-প্যানেল থেকে হুবহু কপি।
+        //  ইমেইল-মোডাল ও 💬 মেসেজ-মোডাল দুটোতেই ব্যবহৃত। ডেটা শুধু পড়া হয়; Rules/সার্ভার অপরিবর্তিত। (পুরনো generateReceiptPdfBase64 আগের মতোই কাজ করে)
+        // ======================================================================
+            // 🆕 [v16.5.24] PDF টেবিল সম্পাদনা — কলাম দেখানো/লুকানো, নাম, ক্রম, প্রস্থ (%) ও টেবিল-স্টাইল; এডমিন সেটিংস থেকে বদলায়। না বদলালে আগের চেহারাই থাকে
+            const RECEIPT_TABLE_SPECS = {
+                statement: { title: 'হিসাব-বিবরণী টেবিল (সব লেনদেন)', cols: [
+                    { id: 'item', name: 'খাত', label: c => c.labelItem, align: 'left' },
+                    { id: 'date', name: 'তারিখ', label: c => c.labelDate, align: 'left', legacyShow: true },
+                    { id: 'amount', name: 'পরিমাণ', label: c => c.labelAmount, align: 'right' }] },
+                history: { title: 'সাম্প্রতিক লেনদেন (বিস্তারিত রিসিপ্ট)', cols: [
+                    { id: 'date', name: 'তারিখ', label: c => c.labelDate, align: 'left' },
+                    { id: 'item', name: 'খাত', label: c => c.labelItem, align: 'left' },
+                    { id: 'method', name: 'মাধ্যম', label: () => 'মাধ্যম', align: 'left' },
+                    { id: 'amount', name: 'পরিমাণ', label: c => c.labelAmount, align: 'right' }] },
+                monthGrid: { title: 'মাসভিত্তিক হিসাব (মাসিক রিসিপ্ট)', cols: [
+                    { id: 'month', name: 'মাস', label: () => 'মাস', align: 'left' },
+                    { id: 'date', name: 'তারিখ', label: c => c.labelDate, align: 'left' },
+                    { id: 'method', name: 'মাধ্যম', label: () => 'মাধ্যম', align: 'left' },
+                    { id: 'amount', name: 'পরিমাণ', label: c => c.labelAmount, align: 'right' }] },
+                yearList: { title: 'বার্ষিক/এককালীন তালিকা', cols: [
+                    { id: 'date', name: 'তারিখ', label: c => c.labelDate, align: 'left' },
+                    { id: 'remarks', name: 'মন্তব্য', label: () => 'মন্তব্য', align: 'left' },
+                    { id: 'method', name: 'মাধ্যম', label: () => 'মাধ্যম', align: 'left' },
+                    { id: 'amount', name: 'পরিমাণ', label: c => c.labelAmount, align: 'right' }] }
+            };
+            const RC_TS_DEFAULT = { headBg: '', headColor: '', zebra: false, border: 'line', pad: 6, fsDelta: 0, kvWidth: 32 };
+            const _rcHex = (v) => /^#[0-9a-fA-F]{6}$/.test(String(v || ''));
+            const _rcClamp = (v, lo, hi, d) => { const n = parseInt(v, 10); return isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d; };
+            const rcNormalize = (c) => {
+                const raw = (c.tableStyle && typeof c.tableStyle === 'object') ? c.tableStyle : {};
+                const ts = Object.assign({}, RC_TS_DEFAULT, raw);
+                ts.headBg = _rcHex(ts.headBg) ? ts.headBg : ''; ts.headColor = _rcHex(ts.headColor) ? ts.headColor : '';
+                ts.zebra = !!ts.zebra; ts.border = ['line', 'grid', 'none'].indexOf(ts.border) >= 0 ? ts.border : 'line';
+                ts.pad = _rcClamp(ts.pad, 2, 18, 6); ts.fsDelta = _rcClamp(ts.fsDelta, -4, 4, 0); ts.kvWidth = _rcClamp(ts.kvWidth, 15, 60, 32);
+                c.tableStyle = ts;
+                const out = {};
+                Object.keys(RECEIPT_TABLE_SPECS).forEach(k => {
+                    const spec = RECEIPT_TABLE_SPECS[k];
+                    const saved = (c.tables && c.tables[k] && Array.isArray(c.tables[k].cols)) ? c.tables[k].cols : [];
+                    const order = [];
+                    saved.forEach(sc => { if (sc && spec.cols.some(x => x.id === sc.id) && !order.some(o => o.id === sc.id)) order.push(sc); });
+                    spec.cols.forEach(x => { if (!order.some(o => o.id === x.id)) order.push({ id: x.id }); });
+                    out[k] = { cols: order.map(sc => {
+                        const d = spec.cols.find(x => x.id === sc.id), dl = d.label(c);
+                        const dShow = d.legacyShow ? c.showDate !== false : true;
+                        return { id: sc.id, name: d.name, align: d.align, defLabel: dl, legacyShow: !!d.legacyShow,
+                            label: (typeof sc.label === 'string' && sc.label.trim()) ? sc.label.trim().slice(0, 30) : dl,
+                            show: (d.legacyShow || sc.show === undefined) ? dShow : !!sc.show, width: _rcClamp(sc.width, 0, 90, 0) };
+                    }) };
+                });
+                c.tables = out; return c;
+            };
+            window.rcNormalize = rcNormalize;
+            // rows: [{ c: { colId: আগে-থেকে-escape-করা html }, hl: bool }]
+            window.rcRenderTable = (cfg, key, rows, o) => {
+                o = o || {};
+                const cols = cfg.tables[key].cols.filter(c => c.show); if (!cols.length) return '';
+                const ts = cfg.tableStyle, fs = (o.fs || cfg.fontSize) + ts.fsDelta, pad = ts.pad;
+                const cell = 'white-space:normal !important;max-width:none !important;overflow:visible !important;text-overflow:clip !important;word-break:break-word;';
+                const bd = ts.border === 'grid' ? 'border:1px solid #cfc6aa;' : ts.border === 'line' ? 'border-bottom:1px solid #e6dfc9;' : '';
+                const thBd = ts.border === 'grid' ? 'border:1px solid #cfc6aa;' : ts.border === 'line' ? 'border-bottom:1.5px solid #bbb;' : '';
+                const anyW = cols.some(c => c.width > 0);
+                const colgroup = '<colgroup>' + cols.map(c => c.width > 0 ? `<col style="width:${c.width}%">` : '<col>').join('') + '</colgroup>';
+                const th = cols.map(c => `<th style="text-align:${c.align};padding:${pad}px ${pad + 2}px;${thBd}${ts.headBg ? 'background:' + ts.headBg + ';' : ''}${ts.headColor ? 'color:' + ts.headColor + ';' : ''}${cell}">${escapeHtml(c.label)}</th>`).join('');
+                const body = rows.length ? rows.map((r, i) => `<tr style="${r.hl ? 'background:rgba(0,0,0,0.06);font-weight:700;' : (ts.zebra && i % 2 ? 'background:rgba(0,0,0,0.035);' : '')}">${cols.map(c => `<td style="text-align:${c.align};padding:${pad}px ${pad + 2}px;${bd}${cell}">${r.c[c.id] == null ? '' : r.c[c.id]}</td>`).join('')}</tr>`).join('')
+                    : `<tr><td colspan="${cols.length}" style="padding:${pad}px;${cell}">${escapeHtml(o.empty || 'কোনো তথ্য নেই')}</td></tr>`;
+                return `<table style="width:100%;border-collapse:collapse;margin-bottom:${o.mb == null ? 14 : o.mb}px;table-layout:${anyW ? 'fixed' : 'auto'};font-size:${fs}px !important;">${colgroup}<thead><tr>${th}</tr></thead><tbody>${body}</tbody></table>`;
+            };
+        const pdfSigParts = (fs) => {
+            const g = window.__mfPdfSig; if (!g) return { img: '', name: '' };
+            const img = g.image ? `<img src="${g.image}" alt="" style="display:block;margin:0 auto 4px;max-height:58px;max-width:200px;object-fit:contain;">` : '';
+            const nm = (g.approver || g.title) ? `<div style="font-size:${Math.max(10, fs - 1)}px;font-weight:700;margin-top:2px;">${escapeHtml(g.approver || '')}</div>${g.title ? `<div style="font-size:${Math.max(10, fs - 2)}px;color:#555;">${escapeHtml(g.title)}</div>` : ''}` : '';
+            return { img, name: nm };
+        };
+        // 🆕 রিসিপ্ট ক্যাপচার করে PDF (base64) বানানো
+        // 🔧 [v16.5.24] ক্যাপচার-ধাপগুলো (একই html2canvas + jsPDF, একই ডিফল্ট scale 2 / JPEG 0.95) একটি সাধারণ ফাংশনে আনা হলো, যাতে
+        // নতুন রিসিপ্ট-ধরনগুলোও একই পথ ব্যবহার করে। স্বাভাবিক আকারে আউটপুট আগের মতোই। শুধু বাড়তি সুরক্ষা:
+        //   • খুব লম্বা পৃষ্ঠায় (ব্রাউজারের ক্যানভাস-সীমা পেরোলে আগে খালি/ভাঙা PDF হতো) scale স্বয়ংক্রিয়ভাবে কমে
+        //   • PDF সার্ভারের সীমা (৬ MB) ছাড়ালে পাঠানোর আগেই রেজোলিউশন/মান কমিয়ে আবার চেষ্টা; তবুও বড় হলে স্পষ্ট ত্রুটি
+        const PDF_SOFT_BYTES = 5.5 * 1024 * 1024;
+        const capturePdfBase64 = async (htmlBuilder) => {
+            await ensureHtml2Canvas();
+            const capture = document.createElement('div');
+            capture.id = 'export-capture';
+            // 🆕 [v16.5.12] রিসিপ্টের প্রস্থ ও মূল রঙ সেটিংস থেকে
+            const _rc = getReceiptCfg();
+            capture.style.width = _rc.width + 'px';
+            if (_rc.accent) { capture.style.setProperty('--emerald-800', _rc.accent); capture.style.setProperty('--emerald-900', _rc.accent); }
+            document.body.appendChild(capture);
+            try {
+                capture.innerHTML = await htmlBuilder();
+                await embedAllImagesInElement(capture);
+                try { await document.fonts.ready; await Promise.all([document.fonts.load('16px "Baloo Da 2"'), document.fonts.load('700 16px "Baloo Da 2"')]); } catch (e) { }   // বালুদা ফন্ট লোড হওয়া পর্যন্ত অপেক্ষা (নইলে ক্যাপচারে ফলব্যাক ফন্ট আসে)
+                const w = Math.max(1, capture.scrollWidth), h = Math.max(1, capture.scrollHeight);
+                let scale = Math.max(0.5, Math.min(2, 15000 / h, Math.sqrt(16000000 / (w * h))));
+                let quality = 0.95, pdf = '';
+                for (let i = 0; i < 4; i++) {
+                    const canvas = await html2canvas(capture, { backgroundColor: '#f6f3ea', scale, useCORS: true });
+                    pdf = await canvasToPdfBase64(canvas, quality);
+                    if (pdf.length * 0.75 <= PDF_SOFT_BYTES) break;
+                    scale = Math.max(0.5, scale * 0.7); quality = Math.max(0.6, quality - 0.1);
+                }
+                if (pdf.length * 0.75 > 6 * 1024 * 1024) throw new Error('PDF অতিরিক্ত বড় (' + (pdf.length * 0.75 / 1048576).toFixed(1) + ' MB) — "সাধারণ রিসিপ্ট" ধরন বা কম লেনদেনের রিসিপ্ট বাছাই করুন');
+                return pdf;
+            } finally {
+                capture.remove();
+            }
+        };
+        // 🆕 রিসিপ্টকে JPG ছবি হিসেবে ডাউনলোড (PDF-এর মতোই একই ডিজাইন/ক্যাপচার)
+        const captureReceiptJpg = async (htmlBuilder) => {
+            await ensureHtml2Canvas();
+            const capture = document.createElement('div');
+            capture.id = 'export-capture';
+            const _rc = getReceiptCfg();
+            capture.style.width = _rc.width + 'px';
+            if (_rc.accent) { capture.style.setProperty('--emerald-800', _rc.accent); capture.style.setProperty('--emerald-900', _rc.accent); }
+            document.body.appendChild(capture);
+            try {
+                capture.innerHTML = await htmlBuilder();
+                await embedAllImagesInElement(capture);
+                try { await document.fonts.ready; await Promise.all([document.fonts.load('16px "Baloo Da 2"'), document.fonts.load('700 16px "Baloo Da 2"')]); } catch (e) { }
+                const w = Math.max(1, capture.scrollWidth), h = Math.max(1, capture.scrollHeight);
+                const scale = Math.max(0.5, Math.min(2, 15000 / h, Math.sqrt(16000000 / (w * h))));
+                const canvas = await html2canvas(capture, { backgroundColor: '#f6f3ea', scale, useCORS: true });
+                const url = canvas.toDataURL('image/jpeg', 0.95);
+                if (!url || url.length < 100) throw new Error('রিসিপ্ট ছবি তৈরি করা যায়নি (পৃষ্ঠা অতিরিক্ত বড় হতে পারে)');
+                return url;
+            } finally { capture.remove(); }
+        };
+        const generateJpgForType = async (type, m, txn, show, style) => {
+            if (type === 'statement') return captureReceiptJpg(() => buildReceiptHtml(m));
+            if (!txn) throw new Error('JPG রিসিপ্টের জন্য একটি লেনদেন লাগবে');
+            return captureReceiptJpg(() => buildTxnReceiptHtml(type, m, txn, show, style));
+        };
+        const BN_W = ['শূন্য','এক','দুই','তিন','চার','পাঁচ','ছয়','সাত','আট','নয়','দশ','এগারো','বারো','তেরো','চৌদ্দ','পনেরো','ষোলো','সতেরো','আঠারো','ঊনিশ','বিশ','একুশ','বাইশ','তেইশ','চব্বিশ','পঁচিশ','ছাব্বিশ','সাতাশ','আটাশ','ঊনত্রিশ','ত্রিশ','একত্রিশ','বত্রিশ','তেত্রিশ','চৌত্রিশ','পঁয়ত্রিশ','ছত্রিশ','সাঁইত্রিশ','আটত্রিশ','ঊনচল্লিশ','চল্লিশ','একচল্লিশ','বিয়াল্লিশ','তেতাল্লিশ','চুয়াল্লিশ','পঁয়তাল্লিশ','ছেচল্লিশ','সাতচল্লিশ','আটচল্লিশ','ঊনপঞ্চাশ','পঞ্চাশ','একান্ন','বায়ান্ন','তিপ্পান্ন','চুয়ান্ন','পঞ্চান্ন','ছাপ্পান্ন','সাতান্ন','আটান্ন','ঊনষাট','ষাট','একষট্টি','বাষট্টি','তেষট্টি','চৌষট্টি','পঁয়ষট্টি','ছেষট্টি','সাতষট্টি','আটষট্টি','ঊনসত্তর','সত্তর','একাত্তর','বাহাত্তর','তিয়াত্তর','চুয়াত্তর','পঁচাত্তর','ছিয়াত্তর','সাতাত্তর','আটাত্তর','ঊনআশি','আশি','একাশি','বিরাশি','তিরাশি','চুরাশি','পঁচাশি','ছিয়াশি','সাতাশি','আটাশি','ঊননব্বই','নব্বই','একানব্বই','বিরানব্বই','তিরানব্বই','চুরানব্বই','পঁচানব্বই','ছিয়ানব্বই','সাতানব্বই','আটানব্বই','নিরানব্বই'];
+        const bnAmountWords = (amt) => {
+            let n = Number(amt);
+            if (!isFinite(n) || n <= 0 || n !== Math.floor(n) || n >= 1e9) return '';
+            const parts = []; const take = (div, name) => { const q = Math.floor(n / div); if (q > 0) { parts.push((q < 100 ? BN_W[q] : '') + ' ' + name); n -= q * div; } };
+            const cr = Math.floor(n / 1e7); if (cr > 0) { parts.push((cr < 100 ? BN_W[cr] : String(cr)) + ' কোটি'); n -= cr * 1e7; }
+            take(1e5, 'লক্ষ'); take(1e3, 'হাজার');
+            const h = Math.floor(n / 100); if (h > 0) { parts.push(BN_W[h] + ' শত'); n -= h * 100; }
+            if (n > 0) parts.push(BN_W[n]);
+            return parts.join(' ').replace(/\s+/g, ' ').trim() + ' টাকা মাত্র';
+        };
+        // 🆕 [v16.5.24] লেনদেন-ভিত্তিক রিসিপ্ট: simple | detailed | monthly | yearly
+        // তথ্য শুধু বাস্তব এন্ট্রি/সদস্য-ডেটা থেকে; ডেটা না থাকলে সারিটাই বাদ (বানানো মান নয়); QR/ভেরিফিকেশন-লিংক নেই (বাস্তব যাচাই-ব্যবস্থা নেই)।
+        const buildTxnReceiptHtml = async (type, m, txn, show, style) => {
+            const s = state.settings, cfg = getReceiptCfg();
+            show = Object.assign({ method: true, collector: true, history: true, total: true, address: true, contact: true, thanks: true }, show || {});
+            const e = txn.entry, isMonthly = txn.kind === 'monthly';
+            const markHtml = cfg.showLogo ? await logoMarkHtmlAsync(s) : '';
+            const time = new Date().toLocaleString('bn-BD', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+            const fs = cfg.fontSize;
+            const cell = 'white-space:normal !important;max-width:none !important;overflow:visible !important;text-overflow:clip !important;word-break:break-word;';
+            const td = (v, x) => `<td style="padding:6px 8px;border-bottom:1px solid #e6dfc9;${cell}${x || ''}">${v}</td>`;
+            const th = (v, x) => `<th style="text-align:left;border-bottom:1px solid #ccc;padding:6px 8px;${cell}${x || ''}">${v}</th>`;
+            const kv = (label, val) => (val === undefined || val === null || val === '') ? '' : `<tr>${td(escapeHtml(label), 'color:#6b6350;width:' + cfg.tableStyle.kvWidth + '%;')}${td('<strong>' + escapeHtml(val) + '</strong>')}</tr>`;
+            const tbl = (inner) => `<table style="width:100%;border-collapse:collapse;margin-bottom:14px;table-layout:auto;font-size:${fs}px !important;">${inner}</table>`;
+            const monthLabel = isMonthly ? txnMonthLabel(e.month) : '';
+            const kindLabel = isMonthly ? 'মাসিক অনুদান' + (monthLabel ? ' — ' + monthLabel : '') : 'বার্ষিক/এককালীন অনুদান';
+            const same = (x) => x === e || (x && e && x.id && x.id === e.id);
+            const hl = 'background:rgba(0,0,0,0.06);font-weight:700;';
+            const sec = (title) => `<div style="font-weight:700;margin:14px 0 6px;font-size:${fs}px;">${escapeHtml(title)}</div>`;
+
+            let body = tbl(
+                kv('রিসিপ্ট নং', txnReceiptNo(txn)) + kv(cfg.labelDate, fmtDate(e.date)) + kv('নাম', m.name) +
+                (cfg.showId ? kv('আইডি নং', m.idNumber) : '') + (cfg.showMobile ? kv('মোবাইল', m.mobile) : '') +
+                kv(cfg.labelItem, kindLabel) + (show.method ? kv('পরিশোধের মাধ্যম', e.method) : '') +
+                (show.collector ? kv('সংগ্রাহক', e.collector) : '') + (!isMonthly ? kv('মন্তব্য', e.remarks) : '')
+            );
+            body += `<div class="pill active" style="font-size:${fs + 2}px;padding:10px 18px;display:inline-block;margin:4px 0 12px;">${escapeHtml(cfg.labelAmount)}: ${fmtMoney(e.amount)}</div>`;
+
+            let extras = '';
+            if (type === 'detailed') {
+                const mSum = state.monthly.filter(r => r.memberId === m.id).reduce((a, r) => a + (Number(r.amount) || 0), 0);
+                const ySum = state.yearly.filter(r => r.memberId === m.id).reduce((a, r) => a + (Number(r.amount) || 0), 0);
+                const adv = Number(m.advanceBalance) || 0;
+                extras += sec('সদস্যের সামগ্রিক অনুদান') + tbl(
+                    kv('মাসিক অনুদান (মোট)', fmtMoney(mSum)) + kv('বার্ষিক/এককালীন (মোট)', fmtMoney(ySum)) +
+                    (adv > 0 ? kv('অগ্রিম ব্যালেন্স', fmtMoney(adv)) : '') +
+                    (show.total ? kv('সর্বমোট অনুদান', fmtMoney(memberTotal(m.id))) : '') +
+                    kv('মোট কতবার', memberDonationCount(m.id) + ' বার')
+                );
+                if (show.history) {
+                    const rows = getMemberTxns(m.id).slice(0, 10).map(t => ({ hl: same(t.entry), c: { date: fmtDate(t.entry.date) || '—', item: t.kind === 'monthly' ? 'মাসিক — ' + escapeHtml(txnMonthLabel(t.entry.month)) : 'বার্ষিক/এককালীন', method: escapeHtml(t.entry.method || '—'), amount: fmtMoney(t.entry.amount) } }));
+                    extras += sec('সাম্প্রতিক লেনদেন (সর্বোচ্চ ১০টি)') + window.rcRenderTable(cfg, 'history', rows, { fs });
+                }
+            } else if (type === 'monthly') {
+                const fy = fiscalYearOfMonthKey(e.month);
+                if (fy) {
+                    let sum = 0;
+                    const rows = getMonthsForYear(fy).map(mo => {
+                        const en = getMonthlyEntry(m.id, mo.key), amt = en ? Number(en.amount) || 0 : 0; sum += amt;
+                        const cellAmt = amt > 0 ? fmtMoney(amt) : (en ? '০ (জমা হয়নি)' : '—');
+                        return { hl: !!(en && same(en)), c: { month: escapeHtml(mo.display), date: en && en.date ? fmtDate(en.date) : '—', method: escapeHtml((en && en.method) || '—'), amount: cellAmt } };
+                    });
+                    extras += sec('অর্থবছর ' + fy + ' — মাসভিত্তিক হিসাব') + window.rcRenderTable(cfg, 'monthGrid', rows, { fs });
+                    if (show.total) extras += `<div style="font-size:${fs}px;margin-bottom:10px;"><strong>এই অর্থবছরে মাসিক অনুদানের মোট:</strong> ${fmtMoney(sum)}</div>`;
+                }
+            } else if (type === 'yearly') {
+                const ys = memberYearlyBreakdown(m.id);
+                const rows = ys.map(r => ({ hl: same(r), c: { date: fmtDate(r.date) || '—', remarks: escapeHtml(r.remarks || '—'), method: escapeHtml(r.method || '—'), amount: fmtMoney(r.amount) } }));
+                if (rows.length) {
+                    extras += sec('বার্ষিক/এককালীন অনুদানের তালিকা') + window.rcRenderTable(cfg, 'yearList', rows, { fs });
+                    if (show.total) extras += `<div style="font-size:${fs}px;margin-bottom:10px;"><strong>বার্ষিক/এককালীন অনুদানের মোট:</strong> ${fmtMoney(ys.reduce((a, r) => a + (Number(r.amount) || 0), 0))}</div>`;
+                }
+            }
+            let tailHtml = '';
+            if (cfg.showThanks && show.thanks && cfg.thanks) tailHtml += `<div style="margin-top:16px;font-size:${Math.max(11, fs - 0.5)}px;line-height:1.9;white-space:pre-wrap;">${escapeHtml(cfg.thanks)}</div>`;
+            if (cfg.extra) tailHtml += `<div style="margin-top:12px;padding-top:10px;border-top:1px dashed #cdbf9b;font-size:${Math.max(11, fs - 1)}px;line-height:1.8;white-space:pre-wrap;">${escapeHtml(cfg.extra)}</div>`;
+            const _sp = pdfSigParts(fs);
+            const sigHtml = `<div style="display:flex;justify-content:flex-end;margin-top:34px;"><div style="text-align:center;min-width:200px;">${_sp.img}<div style="border-top:1px solid #444;padding-top:6px;font-size:${Math.max(11, fs - 1)}px;">অনুমোদিত স্বাক্ষর</div>${_sp.name || `<div style="font-size:${Math.max(10, fs - 2)}px;color:#6b6350;">${escapeHtml(s.name)}</div>`}</div></div>`;
+            if (style === 'classic') {
+                return `
+                <div class="export-header">
+                  <div class="em-mark">${markHtml}</div>
+                  <div>
+                    <div class="em-name">${escapeHtml(s.name)}</div>
+                    ${(cfg.showAddress && show.address) ? `<div class="em-sub">${escapeHtml(s.address)}</div>` : ''}
+                    ${(cfg.showContact && show.contact) ? `<div class="em-sub">${escapeHtml(s.contact)}</div>` : ''}
+                    <div class="em-footer">${escapeHtml(cfg.subtitle)}${cfg.showTime ? ` &nbsp;•&nbsp; তৈরি: ${time}` : ''}</div>
+                  </div>
+                </div>
+                <div class="export-main" style="padding:22px 24px;">
+                  <h2 style="font-family:var(--font-display);color:var(--emerald-900);margin:0 0 14px;">${escapeHtml(cfg.title)}</h2>
+                  ${body}${extras}${tailHtml}${sigHtml}
+                </div>`;
+            }
+            // 💚 "মানি রিসিপ্ট" ফর্ম-ডিজাইন (ডিফল্ট): দাতার কপি · লোগো+সংগঠন · রিসিপ্ট নং/তারিখ · ব্যানার · নাম/ঠিকানা/টাকা/বাবদ/কথায় · স্বাক্ষর · নিচের ডোরা
+            const ac = cfg.accent || '#2e8b2e', dots = `border-bottom:1.5px dotted #777;`;
+            const line = (label, val, extra) => `<div style="display:flex;align-items:flex-end;gap:8px;margin:14px 0;font-size:${fs + 1}px;"><span style="white-space:nowrap;">${label}</span><span style="flex:1;${dots}min-height:${fs + 8}px;padding:0 6px;font-weight:700;${extra || ''}">${escapeHtml(val || '')}</span></div>`;
+            const words = bnAmountWords(e.amount);
+            const addr = m.address || m.village || '';
+            const dateTxt = fmtDate(e.date);
+            // সংগঠনের নাম, ঠিকানা ও লোগো এই ফর্মে সবসময় থাকে (রিসিপ্ট-সেটিংসের টগলে বন্ধ হয় না)। লোগো আসে সেটিংসের লোগো/লোগো-ছবি থেকে — সেখানে বদলালে সব রিসিপ্টে বদলে যায়।
+            let logoBlock = '';
+            try { const du = await resolveExportLogoDataUrl(s); if (du) logoBlock = `<img src="${escapeHtml(du)}" style="max-height:96px;max-width:230px;object-fit:contain;display:block;">`; } catch (e) { }
+            if (!logoBlock) { const mk = markHtml || await logoMarkHtmlAsync(s); logoBlock = `<div style="width:72px;height:72px;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:36px;background:${ac}22;">${mk}</div>`; }
+            // বাম পাশে রিসিপ্ট-বইয়ের ছেঁড়া/ছিদ্রের ভাব: ডটেড ছেঁড়া-রেখা + অর্ধ-কাটা গোল ছিদ্র
+            const holes = Array.from({ length: 26 }, () => `<div style="width:14px;height:14px;border-radius:50%;background:#f6f3ea;border:1px solid #cfcfcf;"></div>`).join('');
+            const perforation = `<div style="position:absolute;left:-8px;top:14px;bottom:14px;width:14px;display:flex;flex-direction:column;justify-content:space-between;">${holes}</div><div style="position:absolute;left:14px;top:0;bottom:0;border-left:2px dotted #b9b2a0;"></div>`;
+            const moneyForm = `
+              <div style="padding-left:12px;"><div style="position:relative;background:#fff;border:1px solid #cfcfcf;padding:18px 26px 10px 40px;font-family:inherit;color:#222;box-shadow:-3px 0 0 #ece7d8;">
+                ${perforation}
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+                  <div style="font-size:${fs}px;color:#555;padding-top:6px;">দাতার কপি</div>
+                  <div style="display:flex;align-items:center;gap:12px;text-align:left;">
+                    ${logoBlock}
+                    <div>
+                      <div style="font-size:${fs + 8}px;font-weight:800;color:${ac};line-height:1.2;">${escapeHtml(s.name)}</div>
+                      ${s.address ? `<div style="font-size:${fs - 1}px;color:#555;">${escapeHtml(s.address)}</div>` : ''}
+                      ${(cfg.showContact && show.contact && s.contact) ? `<div style="font-size:${fs - 1}px;color:#555;">${escapeHtml(s.contact)}</div>` : ''}
+                    </div>
+                  </div>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;">
+                  <div style="font-size:${fs}px;display:flex;gap:8px;align-items:flex-end;"><span>রিসিপ্ট নং</span><span style="${dots}min-width:150px;padding:0 6px;font-weight:700;">${escapeHtml(txnReceiptNo(txn))}</span></div>
+                  <div style="display:flex;gap:8px;align-items:center;font-size:${fs}px;"><span>তারিখ</span><span style="border:1px solid #999;min-width:140px;min-height:${fs + 10}px;padding:2px 8px;text-align:center;font-weight:700;">${escapeHtml(dateTxt)}</span></div>
+                </div>
+                <div style="text-align:center;margin:14px 0 4px;"><span style="display:inline-block;background:${ac};color:#fff;font-weight:800;font-size:${fs + 8}px;padding:8px 54px;border-radius:30px;box-shadow:0 2px 0 rgba(0,0,0,.15);">${escapeHtml(cfg.title)}</span></div>
+                ${line('নাম:', m.name)}
+                ${addr ? line('ঠিকানা:', addr) : ''}
+                ${(cfg.showId && m.idNumber) || (cfg.showMobile && m.mobile) ? line('আইডি / মোবাইল:', [cfg.showId && m.idNumber ? 'আইডি ' + m.idNumber : '', cfg.showMobile && m.mobile ? m.mobile : ''].filter(Boolean).join(' · ')) : ''}
+                <div style="display:flex;align-items:flex-end;gap:8px;margin:14px 0;font-size:${fs + 1}px;">
+                  <span>টাকা:</span><span style="border:1.5px solid #777;min-width:150px;padding:4px 10px;font-weight:800;font-size:${fs + 3}px;text-align:center;">${fmtMoney(e.amount)}</span>
+                  <span>বাবদ:</span><span style="flex:1;${dots}min-height:${fs + 8}px;padding:0 6px;font-weight:700;">${escapeHtml(kindLabel)}${show.method && e.method ? ' (' + escapeHtml(e.method) + ')' : ''}</span>
+                </div>
+                ${words ? line('কথায়:', words) : ''}
+                ${(show.collector && e.collector) ? `<div style="font-size:${fs - 1}px;color:#555;">সংগ্রাহক: ${escapeHtml(e.collector)}</div>` : ''}
+                ${(!isMonthly && e.remarks) ? `<div style="font-size:${fs - 1}px;color:#555;">মন্তব্য: ${escapeHtml(e.remarks)}</div>` : ''}
+                ${extras ? `<div style="margin-top:12px;">${extras}</div>` : ''}
+                ${tailHtml}
+                <div style="display:flex;justify-content:flex-end;margin:30px 0 12px;"><div style="text-align:center;min-width:210px;">${pdfSigParts(fs).img}<div style="border-top:1.5px dotted #555;padding-top:6px;font-size:${fs}px;">অনুমোদিত স্বাক্ষর</div>${pdfSigParts(fs).name}</div></div>
+                ${cfg.showTime ? `<div style="font-size:${fs - 3}px;color:#888;text-align:left;">তৈরি: ${time}</div>` : ''}
+                <div style="height:14px;background:${ac};margin:10px -26px -10px -40px;"></div>
+              </div></div>`;
+            return moneyForm;
+        };
+        // type: simple | detailed | monthly | yearly | statement(সব লেনদেন — আগের রিসিপ্ট হুবহু)
+        const generatePdfForType = async (type, m, txn, show, style) => {
+            if (type === 'statement') return generateReceiptPdfBase64(m);
+            if (!PDF_NEEDS_TXN[type]) throw new Error('অজানা PDF ধরন');
+            if (!txn) throw new Error('রিসিপ্ট PDF-এর জন্য একটি লেনদেন বাছাই করুন');
+            if (type === 'monthly' && txn.kind !== 'monthly') throw new Error('মাসভিত্তিক রিসিপ্টের জন্য একটি মাসিক লেনদেন বাছাই করুন');
+            if (type === 'yearly' && txn.kind !== 'yearly') throw new Error('বার্ষিক/এককালীন রিসিপ্টের জন্য একটি বার্ষিক/এককালীন লেনদেন বাছাই করুন');
+            const pdf = await capturePdfBase64(() => buildTxnReceiptHtml(type, m, txn, show, style));
+            try { window.mfAudit.event('receipt_pdf', { m: 'receipt', e: m && m.id, o: 'ok', d: 'রসিদ-PDF (' + type + ')' }); } catch (e) { }
+            return pdf;
+        };
+
+        // 🆕 Google Apps Script Web App দিয়ে সরাসরি ইমেইল পাঠানো (attachment সহ)
+        // 🔧 [v16.5.24] আগের চুক্তি (idToken,to,subject,body,isHtml,pdfBase64,fileName → {success,...}) অপরিবর্তিত। যোগ হয়েছে:
+        //   • meta (ঐচ্ছিক): { requestId, tpl, att, ref } — সার্ভার requestId দিয়ে ডুপ্লিকেট ঠেকায় (পুরনো সার্ভার অতিরিক্ত ফিল্ড উপেক্ষা করে)
+        //   • ৯০ সেকেন্ড টাইমআউট; সাফল্য মানে স্পষ্ট success === true (আগে success অনুপস্থিত থাকলেও "সফল" ধরা হতো)
+        //   • নেটওয়ার্ক/টাইমআউটে error.uncertain = true — ইমেইল গিয়েছে কিনা অনিশ্চিত
+        const PDF_NEEDS_TXN = { simple: 1, detailed: 1, monthly: 1, yearly: 1 };
+        const txnLabel = (t) => {
+            const e = t.entry, d = fmtDate(e.date);
+            return (t.kind === 'monthly' ? 'মাসিক — ' + (txnMonthLabel(e.month) || 'মাস অজানা') : 'বার্ষিক/এককালীন') + ' · ' + fmtMoney(e.amount) + (d ? ' · ' + d : '') + (e.method ? ' · ' + e.method : '');
+        };
+        const withPdfSig = async (sig, fn) => {
+            const prev = window.__mfPdfSig; window.__mfPdfSig = (sig && !sig.legacy && !sig.none) ? sig : null;
+            try { return await fn(); } finally { window.__mfPdfSig = prev; }
+        };
+        if (!window.mfSig) window.mfSig = { getStore: () => getSigStore(), resolve: (a, b) => resolveSig(a, b), emailText: (a, b) => sigEmailText(a, b) };
 
         // 🆕 Google Apps Script Web App দিয়ে সরাসরি ইমেইল পাঠানো (attachment সহ)
         const sendEmailViaGAS = async ({ to, subject, body, pdfBase64, fileName }) => {
@@ -6865,22 +7175,66 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             const customOptionsHtml = ['custom1', 'custom2', 'custom3', 'custom4']
                 .filter(k => et[k].active !== false)
                 .map(k => `<option value="${k}" ${initialTplVal === k ? 'selected' : ''}>🧩 ${escapeHtml(et[k].name || k)}</option>`).join('');
+            // 🆕 [v16.5.49] এডমিনের মতো: 📚 টেমপ্লেট-ম্যানেজারের টেমপ্লেট + রিসিপ্টের ধরন/ফর্ম/লেনদেন বাছাই
+            const emItems = (typeof getEmailItems === 'function') ? getEmailItems().filter(t => t.active) : [];
+            const emTxns = getMemberTxns(m.id);
+            let emTxnIdx = emTxns.length ? 0 : -1;
+            if (isMonthly && monthEntry) { const _i = emTxns.findIndex(t => t.entry === monthEntry); if (_i >= 0) emTxnIdx = _i; }
+            const emTxnPick = () => { const sEl = document.getElementById('em-txn-select'); const i = sEl ? parseInt(sEl.value, 10) : emTxnIdx; return (i >= 0 && emTxns[i]) || null; };
+            const composeItemFor = (val) => { const it = emItems.find(x => 't:' + x.id === val); return it ? composeEmailItem(it, m, isMonthly ? monthKey : null, emTxnPick(), 'tpl') : { subject: '', body: '' }; };
             const html = `
                 <h3>✉️ ইমেইল পাঠান — ${escapeHtml(m.name)}</h3>
                 <div class="small muted" style="margin-bottom:10px;">প্রাপক: ${escapeHtml(m.email)} · <span id="em-attach-indicator">${attachDecisionFor(currentAttachKey) ? '🧾 PDF রিসিপ্ট সংযুক্ত হবে' : '(কোনো সংযুক্তি ছাড়া)'}</span></div>
                 <div class="field"><label class="small muted">টেমপ্লেট</label>
                   <select id="em-template-select">
                     <option value="__default__" ${initialTplVal === '__default__' ? 'selected' : ''}>— ডিফল্ট (স্বয়ংক্রিয়) —</option>
+                    ${emItems.map(t => `<option value="t:${escapeHtml(t.id)}">📚 ${escapeHtml(t.name)}</option>`).join('')}
                     ${customOptionsHtml}
                   </select>
                   <div class="small muted" style="margin-top:4px;">যা বাছাই করবেন তা পরবর্তী ইমেইলেও ডিফল্ট হিসেবে মনে থাকবে। কাস্টম টেমপ্লেট বাছাই করলে সাবজেক্ট/মেসেজ প্রতিস্থাপিত হয়ে যাবে (নিচে চাইলে আরও এডিট করতে পারবেন)।</div>
                 </div>
+                <div class="field"><label class="small muted">🧾 রিসিপ্ট সংযুক্তি (PDF)</label>
+                  <select id="em-attach-select">
+                    <option value="auto">টেমপ্লেটের ডিফল্ট অনুযায়ী</option>
+                    <option value="none">কোনো PDF নয়</option>
+                    <option value="simple">সাধারণ রিসিপ্ট (এক পৃষ্ঠা)</option>
+                    <option value="detailed">বিস্তারিত রিসিপ্ট (রিসিপ্ট + সামগ্রিক হিসাব)</option>
+                    <option value="monthly">মাসভিত্তিক হিসাবসহ রিসিপ্ট</option>
+                    <option value="yearly">বার্ষিক/এককালীন রিসিপ্ট</option>
+                    <option value="statement">হিসাব-বিবরণী (সব লেনদেন)</option>
+                  </select></div>
+                <div class="field" id="em-rc-style" style="display:none;"><label class="small muted">রিসিপ্টের ফর্ম</label>
+                  <select id="em-rstyle"><option value="money">🧾 রিসিপ্ট (মানি-রিসিপ্ট)</option><option value="classic">📜 ক্লাসিক</option></select></div>
+                <div class="field" id="em-rc-txn" style="display:none;"><label class="small muted">লেনদেন (রিসিপ্ট ও লেনদেনের ভেরিয়েবলের জন্য)</label>
+                  <select id="em-txn-select">${emTxns.length ? emTxns.map((t, i) => `<option value="${i}" ${i === emTxnIdx ? 'selected' : ''}>${escapeHtml(txnLabel(t))}${txnReceiptNo(t) ? ' · ' + escapeHtml(txnReceiptNo(t)) : ''}</option>`).join('') : '<option value="-1">— কোনো লেনদেন নেই —</option>'}</select></div>
                 <div class="field"><label>সাবজেক্ট</label><input type="text" id="em-subject" value="${escapeHtml(initialTpl.subject)}"></div>
                 <div class="field"><label>মেসেজ</label><textarea id="em-body" rows="12">${escapeHtml(initialTpl.body)}</textarea></div>
                 <div class="modal-actions"><button class="btn btn-outline" id="em-cancel">বাতিল</button><button class="btn btn-outline" id="em-copy">📋 কপি</button><button class="btn btn-outline" id="em-copy-msg">📝 শুধু মেসেজ কপি</button><button class="btn btn-outline" id="em-copy-tpl" title="এডমিনের সর্বশেষ টেমপ্লেট, {প্লেসহোল্ডার} সহ">🧩 টেমপ্লেট কপি</button><button class="btn btn-primary" id="em-send">📨 পাঠান</button></div>
             `;
             openModal(html, () => {
                 document.getElementById('em-cancel').onclick = closeModal;
+                // 🆕 [v16.5.49] রিসিপ্ট-ধরন/ফর্ম/লেনদেন নিয়ন্ত্রণ (না বদলালে আগের আচরণই — 'auto')
+                const $e = id => document.getElementById(id);
+                const curItem = () => { const v = $e('em-template-select').value; return /^t:/.test(v) ? (emItems.find(x => 't:' + x.id === v) || null) : null; };
+                const syncRc = () => {
+                    const mode = $e('em-attach-select').value;
+                    $e('em-rc-style').style.display = (mode === 'auto' || mode === 'none' || mode === 'statement') ? 'none' : '';
+                    $e('em-rc-txn').style.display = PDF_NEEDS_TXN[mode] ? '' : 'none';
+                    const ind = $e('em-attach-indicator');
+                    if (ind) ind.textContent = mode === 'auto' ? (attachDecisionFor(currentAttachKey) ? '🧾 PDF রিসিপ্ট সংযুক্ত হবে' : '(কোনো সংযুক্তি ছাড়া)') : mode === 'none' ? '(কোনো সংযুক্তি ছাড়া)' : '🧾 ' + PDF_TYPES[mode] + ' সংযুক্ত হবে';
+                };
+                let _lastComposed = $e('em-body').value;
+                $e('em-template-select').addEventListener('change', () => {
+                    const it = curItem();
+                    if (it) { $e('em-attach-select').value = PDF_TYPES[it.pdfType] ? it.pdfType : 'none'; $e('em-rstyle').value = it.pdfStyle === 'classic' ? 'classic' : 'money'; } else { $e('em-attach-select').value = 'auto'; }
+                    _lastComposed = $e('em-body').value; syncRc();
+                });
+                $e('em-attach-select').addEventListener('change', syncRc);
+                $e('em-txn-select').addEventListener('change', () => {   // আইটেম-টেমপ্লেটে লেনদেন বদলালে (লেখা হাতে না বদলালে) মেসেজও নতুন লেনদেনের তথ্যে
+                    const v = $e('em-template-select').value;
+                    if (/^t:/.test(v) && $e('em-body').value === _lastComposed) { const c = composeItemFor(v); $e('em-subject').value = c.subject; $e('em-body').value = c.body; _lastComposed = c.body; }
+                });
+                syncRc();
                 // 🆕 [ধাপ ১.৪] টেমপ্লেট ড্রপডাউন — কাস্টম ১-৪ বাছাই করলে সাবজেক্ট/মেসেজ রিপ্লেস হবে,
                 // "ডিফল্ট"-এ ফিরলে আগের (স্বয়ংক্রিয়ভাবে নির্ধারিত) টেমপ্লেট আবার বসবে
                 const templateSelectEl = document.getElementById('em-template-select');
@@ -6889,7 +7243,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                     // 🆕 [পয়েন্ট ৫] বাছাই মনে রাখা — পরের বার ডিফল্ট হিসেবে এটাই বসবে
                     localStorage.setItem('preferredEmailTemplateChoice', val);
                     currentAttachKey = (val === '__default__') ? defaultTplKey : val;
-                    const newTpl = (val === '__default__') ? tpl : customEmailTemplate(val, m, (context === 'monthly' ? monthKey : null));
+                    const newTpl = /^t:/.test(val) ? composeItemFor(val) : ((val === '__default__') ? tpl : customEmailTemplate(val, m, (context === 'monthly' ? monthKey : null)));
                     document.getElementById('em-subject').value = newTpl.subject;
                     document.getElementById('em-body').value = newTpl.body;
                     const indEl = document.getElementById('em-attach-indicator');
@@ -6995,10 +7349,21 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                     }
                     btn.disabled = true;
                     try {
-                        let pdfBase64 = '';
-                        if (attachDecisionFor(currentAttachKey)) {
+                        let pdfBase64 = '', pdfName = sanitizeFileName(`রিসিপ্ট-${m.name}`) + '.pdf';
+                        const _am = document.getElementById('em-attach-select').value;
+                        if (_am === 'auto') {   // আগের আচরণ অপরিবর্তিত
+                            if (attachDecisionFor(currentAttachKey)) {
+                                btn.textContent = '⏳ রিসিপ্ট তৈরি হচ্ছে...';
+                                pdfBase64 = await generateReceiptPdfBase64(m);
+                            }
+                        } else if (_am !== 'none') {   // 🆕 [v16.5.49] এডমিনের মতো বাছাই-করা ধরন ও ফর্ম
+                            const _tx = emTxnPick();
+                            if (PDF_NEEDS_TXN[_am] && !_tx) throw new Error('রিসিপ্ট PDF-এর জন্য একটি লেনদেন বাছাই করুন');
                             btn.textContent = '⏳ রিসিপ্ট তৈরি হচ্ছে...';
-                            pdfBase64 = await generateReceiptPdfBase64(m);
+                            const _it = curItem();
+                            pdfBase64 = await withPdfSig(resolveSig(_it ? 'i:' + _it.id : 'b:' + currentAttachKey, 'tpl'), () => generatePdfForType(_am, m, _tx, _it ? _it.pdfShow : null, document.getElementById('em-rstyle').value));
+                            const _rno = (_am !== 'statement' && _tx) ? txnReceiptNo(_tx) : '';
+                            pdfName = sanitizeFileName(`রিসিপ্ট-${m.name}` + (_rno ? '-' + _rno : '')) + '.pdf';
                         }
                         btn.textContent = '⏳ পাঠানো হচ্ছে...';
                         const subject = document.getElementById('em-subject').value.trim();
@@ -7009,7 +7374,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                             subject,
                             body: bodyHtml,
                             pdfBase64,
-                            fileName: sanitizeFileName(`রিসিপ্ট-${m.name}`) + '.pdf'
+                            fileName: pdfName
                         });
                         addActivityLog('email', 'member', m.id,
                             `"${m.name}" কে ইমেইল পাঠানো হয়েছে (${donor ? 'অনুদানকারী' : 'অনুদান-অনুরোধ'})`);
@@ -7273,11 +7638,14 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                 if (isMonthly) { const en = getMonthlyEntry(m.id, monthKey); const i = en ? txns.findIndex(t => t.entry === en) : -1; if (i >= 0) return txns[i]; }
                 return txns.length ? txns[0] : null;
             };
+            const txnsAll = () => (typeof getMemberTxns === 'function') ? getMemberTxns(m.id) : [];
+            // 🆕 [v16.5.49] মোডালের "লেনদেন" বাছাই (না বাছলে আগের মতোই এই মাস/সর্বশেষ লেনদেন)
+            const pickTxn = () => { const s = document.getElementById('msg-rtxn'); const i = s ? parseInt(s.value, 10) : -1; const all = txnsAll(); return (i >= 0 && all[i]) ? all[i] : latestTxn(); };
             const compose = (key) => {
                 let c;
                 if (/^t:/.test(key)) {
                     const it = items.find(x => 't:' + x.id === key);
-                    c = it ? composeEmailItem(it, m, isMonthly ? monthKey : null, latestTxn(), 'tpl') : { subject: '', body: '' };
+                    c = it ? composeEmailItem(it, m, isMonthly ? monthKey : null, pickTxn(), 'tpl') : { subject: '', body: '' };
                 } else if (key === '__default__') {
                     c = isMonthly ? monthlyEmailTemplate(m, monthKey) : (donor ? donorEmailTemplate(m) : nonDonorEmailTemplate(m));
                 } else c = customEmailTemplate(key, m, isMonthly ? monthKey : null);
@@ -7297,15 +7665,19 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             };
             const buildReceipt = async (key) => {
                 const fname = (typeof sanitizeFileName === 'function' ? sanitizeFileName('রিসিপ্ট-' + m.name) : 'receipt') + '.jpg';
-                const { type, item, legacy } = receiptPlan(key);
-                if (type === 'none') return { none: 'এই টেমপ্লেটে ইমেইলে রিসিপ্ট এটাচ হয় না, তাই ছবিও যাবে না' };
-                if (typeof generateJpgForType === 'function') {   // admin: ইমেইলের হুবহু একই রিসিপ্ট-ধরন/ডিজাইন/সিগনেচার
-                    const txn = latestTxn();
+                const plan = receiptPlan(key), item = plan.item, legacy = plan.legacy;
+                // 🆕 [v16.5.49] ধরন/ফর্ম হাতে বাছলে সেটাই (টেমপ্লেটের ডিফল্ট ছাপিয়ে); না বাছলে আগের মতোই টেমপ্লেট অনুযায়ী
+                const rtEl = document.getElementById('msg-rtype'), rsEl = document.getElementById('msg-rstyle');
+                const type = (rtEl && rtEl.value && rtEl.value !== 'template') ? rtEl.value : plan.type;
+                const style = (rsEl && rsEl.value && rsEl.value !== 'template') ? rsEl.value : (item ? item.pdfStyle : 'money');
+                if (type === 'none') return { none: 'এই টেমপ্লেটে ইমেইলে রিসিপ্ট এটাচ হয় না, তাই ছবিও যাবে না — চাইলে নিচে "ধরন" বেছে নিন' };
+                if (typeof generateJpgForType === 'function') {   // ইমেইলের হুবহু একই রিসিপ্ট-ধরন/ডিজাইন/সিগনেচার
+                    const txn = pickTxn();
                     if (PDF_NEEDS_TXN[type] && !txn) return { none: 'এই সদস্যের কোনো লেনদেন নেই, তাই রিসিপ্ট-ছবি হবে না' };
-                    if (type === 'monthly' && txn.kind !== 'monthly') return { none: 'মাসভিত্তিক রিসিপ্টের জন্য মাসিক লেনদেন নেই' };
-                    if (type === 'yearly' && txn.kind !== 'yearly') return { none: 'বার্ষিক রিসিপ্টের জন্য বার্ষিক লেনদেন নেই' };
+                    if (type === 'monthly' && txn.kind !== 'monthly') return { none: 'মাসভিত্তিক রিসিপ্টের জন্য একটি মাসিক লেনদেন বাছাই করুন' };
+                    if (type === 'yearly' && txn.kind !== 'yearly') return { none: 'বার্ষিক রিসিপ্টের জন্য একটি বার্ষিক/এককালীন লেনদেন বাছাই করুন' };
                     const sig = resolveSig(item ? 'i:' + item.id : 'b:' + legacy, 'tpl');
-                    const url = await withPdfSig(sig, () => generateJpgForType(type, m, txn, item ? item.pdfShow : null, item ? item.pdfStyle : 'money'));
+                    const url = await withPdfSig(sig, () => generateJpgForType(type, m, txn, item ? item.pdfShow : null, style));
                     return { file: new File([mfMsgDataUrlToBlob(url)], fname, { type: 'image/jpeg' }) };
                 }
                 // personal: এই প্যানেলে ইমেইলে যে হিসাব-রিসিপ্ট (generateReceiptPdfBase64) যায় — একই ক্যানভাস থেকে JPG নেওয়া হয়
@@ -7318,28 +7690,60 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             const wa = mfMsgWaNumber(m.whatsapp || m.mobile), fb = mfMsgFbHandle(m.fbUsername);
             let initial = '';
             try { initial = compose('__default__'); } catch (e) { initial = ''; }
+            // 🆕 [v16.5.49] গোছানো লেআউট: যোগাযোগ-চিপ → টেমপ্লেট → মেসেজ → রিসিপ্ট-কার্ড (ধরন · ফর্ম · লেনদেন) → অ্যাকশন
+            if (!document.getElementById('mf-msg-css')) {
+                const st = document.createElement('style'); st.id = 'mf-msg-css';
+                st.textContent = '.mfm-chips{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px}.mfm-chip{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:999px;border:1px solid var(--line);font-size:12.5px}.mfm-chip.ok{border-color:#25a05a;color:#1b7f46;background:rgba(37,160,90,.08)}.mfm-chip.no{opacity:.75}'
+                    + '.mfm-card{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:0 0 10px;background:var(--card-bg,rgba(0,0,0,.02))}.mfm-card h4{margin:0 0 6px;font-size:14px}'
+                    + '.mfm-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}.mfm-grid .full{grid-column:1/-1}.mfm-grid label{display:block;font-size:12px;opacity:.75;margin-bottom:2px}.mfm-grid select{width:100%}'
+                    + '.mfm-act{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.mfm-act .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;margin:0}'
+                    + '.mfm-wa{background:#1fa855!important;border-color:#1fa855!important;color:#fff!important}.mfm-fb{background:#0a7cff!important;border-color:#0a7cff!important;color:#fff!important}'
+                    + '.mfm-sub{display:flex;gap:8px;margin-top:8px}.mfm-sub .btn{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:40px;margin:0}'
+                    + '@media(max-width:420px){.mfm-grid{grid-template-columns:1fr}}';
+                document.head.appendChild(st);
+            }
+            const rtxns = txnsAll();
             openModal(`
               <h3>💬 মেসেজ পাঠান — ${escapeHtml(m.name)}</h3>
-              <div class="small muted" style="margin-bottom:8px;">WhatsApp: <strong>${wa ? escapeHtml(m.whatsapp || m.mobile) : 'নেই'}</strong> · Messenger: <strong>${fb ? escapeHtml(fb) : 'নেই'}</strong>${(!wa || !fb) ? ' — "✎ সম্পাদনা" থেকে যোগ করুন' : ''}</div>
+              <div class="mfm-chips">
+                <span class="mfm-chip ${wa ? 'ok' : 'no'}" data-mf-noicon><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a9 9 0 0 0-7.8 13.5L3 21l4.6-1.2A9 9 0 1 0 12 3z"/><path d="M9.2 8.6c.3 2.600 2.800 5.100 5.600 5.600l1.100-1.300-2-1-.9.6c-.9-.4-1.700-1.200-2.100-2.100l.6-.9-1-2z" fill="currentColor" stroke="none"/></svg> WhatsApp: <strong>${wa ? escapeHtml(m.whatsapp || m.mobile) : 'নেই'}</strong></span>
+                <span class="mfm-chip ${fb ? 'ok' : 'no'}" data-mf-noicon><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3C6.900 3 3 6.800 3 11.600c0 2.600 1.200 4.900 3.100 6.400V21l2.800-1.500c.9.300 1.900.4 3.100.4 5.100 0 9-3.800 9-8.600S17.100 3 12 3z"/><path d="M7.300 13.800l3.300-3.500 2.600 2.700 3.200-2.700-3.400 3.600-2.600-2.700z" fill="currentColor" stroke="none"/></svg> Messenger: <strong>${fb ? escapeHtml(fb) : 'নেই'}</strong></span>
+              </div>
+              ${(!wa || !fb) ? '<div class="small muted" style="margin:-4px 0 10px;">যে নম্বর/ইউজারনেম নেই তা "✎ সম্পাদনা" থেকে যোগ করুন।</div>' : ''}
               <div class="field"><label>টেমপ্লেট</label><select id="msg-tpl">${opts.map(o => `<option value="${escapeHtml(o.key)}">${escapeHtml(o.label)}</option>`).join('')}</select>
                 <div class="small muted" style="margin-top:4px;"><a href="#" id="msg-tpl-prev">👁️ সব টেমপ্লেটের প্রিভিউ</a>${(typeof openEmailTemplateManager === 'function' && typeof isAdminUser === 'function' && isAdminUser()) ? ' · <a href="#" id="msg-open-mgr">📚 টেমপ্লেট ম্যানেজার</a>' : ''}</div>
                 <div id="msg-tpl-list" style="display:none;margin-top:6px;max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:6px;"></div></div>
-              <div class="field"><label>মেসেজ (পাঠানোর আগে এডিট করা যাবে)</label><textarea id="msg-body" rows="10" style="width:100%;">${escapeHtml(initial)}</textarea></div>
-              <div class="field"><label>👁️ প্রিভিউ (যেভাবে যাবে)</label><div id="msg-pv" class="small" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;"></div></div>
-              <div class="field" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
-                <input type="checkbox" id="msg-att" checked style="width:18px;height:18px;flex:none;">
-                <label for="msg-att" style="margin:0;">🧾 রিসিপ্ট ছবি সংযুক্ত করুন <span class="muted small">(ইমেইলে যে রিসিপ্ট যায় সেটাই)</span></label>
+              <div class="field"><label>মেসেজ <span class="muted small">(পাঠানোর আগে এডিট করা যাবে)</span></label><textarea id="msg-body" rows="8" style="width:100%;">${escapeHtml(initial)}</textarea></div>
+              <div class="mfm-card">
+                <label for="msg-att" style="display:flex;align-items:center;gap:8px;margin:0;cursor:pointer;"><input type="checkbox" id="msg-att" checked style="width:18px;height:18px;flex:none;"><strong>🧾 রিসিপ্ট ছবি সংযুক্ত করুন</strong></label>
+                <div class="small muted" id="msg-att-st" style="margin:4px 0 0 26px;"></div>
+                <div class="mfm-grid" id="msg-rc-opts">
+                  <div><label for="msg-rtype">রিসিপ্টের ধরন</label><select id="msg-rtype">
+                    <option value="template">টেমপ্লেট অনুযায়ী (ইমেইলের মতো)</option>
+                    <option value="simple">সাধারণ (এক পৃষ্ঠা)</option>
+                    <option value="detailed">বিস্তারিত (রিসিপ্ট + সামগ্রিক হিসাব)</option>
+                    <option value="monthly">মাসভিত্তিক হিসাবসহ</option>
+                    <option value="yearly">বার্ষিক/এককালীন</option>
+                    <option value="statement">হিসাব-বিবরণী (সব লেনদেন)</option></select></div>
+                  <div><label for="msg-rstyle">রিসিপ্টের ফর্ম</label><select id="msg-rstyle">
+                    <option value="template">টেমপ্লেট অনুযায়ী</option>
+                    <option value="money">🧾 রিসিপ্ট (মানি-রিসিপ্ট)</option>
+                    <option value="classic">📜 ক্লাসিক</option></select></div>
+                  <div class="full"><label for="msg-rtxn">লেনদেন</label><select id="msg-rtxn"><option value="-1">স্বয়ংক্রিয় (এই মাস / সর্বশেষ লেনদেন)</option>${rtxns.map((t, i) => `<option value="${i}">${escapeHtml(typeof txnLabel === 'function' ? txnLabel(t) : String(i + 1))}${(typeof txnReceiptNo === 'function' && txnReceiptNo(t)) ? ' · ' + escapeHtml(txnReceiptNo(t)) : ''}</option>`).join('')}</select></div>
+                </div>
               </div>
-              <div class="small muted" id="msg-att-st" style="margin:0 0 8px 26px;"></div>
-              <div class="field"><label>অতিরিক্ত ছবি (ঐচ্ছিক — প্রয়োজনে নিজে বেছে নিন)</label><input type="file" id="msg-img" accept="image/*"></div>
-              <div class="modal-actions" style="flex-wrap:wrap;gap:6px;">
-                <button class="btn btn-outline" id="msg-close">বন্ধ করুন</button>
-                <button class="btn btn-outline" id="msg-copy">📋 কপি</button>
-                <button class="btn btn-outline" id="msg-share">📤 শেয়ার মেনু</button>
-                <button class="btn btn-outline" id="msg-fb">Messenger</button>
-                <button class="btn btn-primary" id="msg-wa">WhatsApp</button>
+              <div class="field"><label>অতিরিক্ত ছবি <span class="muted small">(ঐচ্ছিক — প্রয়োজনে নিজে বেছে নিন)</span></label><input type="file" id="msg-img" accept="image/*"></div>
+              <details style="margin:0 0 6px;" open><summary class="small" style="cursor:pointer;font-weight:700;">👁️ প্রিভিউ — যেভাবে যাবে</summary><div id="msg-pv" class="small" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-top:6px;"></div></details>
+              <div class="mfm-act">
+                <button class="btn mfm-wa" id="msg-wa" data-mf-noicon><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a9 9 0 0 0-7.8 13.5L3 21l4.6-1.2A9 9 0 1 0 12 3z"/><path d="M9.2 8.6c.3 2.600 2.800 5.100 5.600 5.600l1.100-1.300-2-1-.9.6c-.9-.4-1.700-1.200-2.100-2.100l.6-.9-1-2z" fill="currentColor" stroke="none"/></svg> WhatsApp</button>
+                <button class="btn mfm-fb" id="msg-fb" data-mf-noicon><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3C6.900 3 3 6.800 3 11.600c0 2.600 1.200 4.900 3.100 6.400V21l2.800-1.500c.9.300 1.900.4 3.100.4 5.100 0 9-3.800 9-8.600S17.100 3 12 3z"/><path d="M7.300 13.800l3.300-3.500 2.600 2.700 3.200-2.700-3.400 3.600-2.600-2.700z" fill="currentColor" stroke="none"/></svg> Messenger</button>
               </div>
-              <div class="small muted" style="margin-top:8px;line-height:1.5;">• <strong>WhatsApp / Messenger</strong>: ওই সদস্যের চ্যাট সরাসরি খোলে (WhatsApp-এ লেখা বসে যায়; Messenger-এ লেখা কপি হয়, পেস্ট করুন)। টিক থাকলে ছবি আগে ডাউনলোড হয় — চ্যাটে 📎 দিয়ে দিন। • <strong>📤 শেয়ার মেনু</strong>: ফোনের শেয়ার-মেনুতে লেখা ও ছবি একসাথে যায় — সেখান থেকে অ্যাপ ও কন্টাক্ট নিজে বাছতে হয়।</div>
+              <div class="mfm-sub">
+                <button class="btn btn-outline" id="msg-copy" data-mf-noicon><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg> কপি</button>
+                <button class="btn btn-outline" id="msg-share" data-mf-noicon><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.600 13.500l6.800 4M15.400 6.500l-6.800 4"/></svg> শেয়ার মেনু</button>
+                <button class="btn btn-outline" id="msg-close">বন্ধ</button>
+              </div>
+              <details style="margin-top:8px;"><summary class="small muted" style="cursor:pointer;">ℹ️ কোন বাটন কী করে?</summary><div class="small muted" style="line-height:1.55;margin-top:4px;">• <strong>WhatsApp / Messenger</strong>: ওই সদস্যের চ্যাট সরাসরি খোলে (WhatsApp-এ লেখা বসে যায়; Messenger-এ লেখা কপি হয়, পেস্ট করুন)। টিক থাকলে ছবি আগে ডাউনলোড হয় — চ্যাটে 📎 দিয়ে দিন। • <strong>শেয়ার মেনু</strong>: ফোনের শেয়ার-মেনুতে লেখা ও ছবি একসাথে যায় — সেখান থেকে অ্যাপ ও কন্টাক্ট নিজে বাছতে হয়।</div></details>
             `, () => {
                 const $ = id => document.getElementById(id);
                 const text = () => $('msg-body').value.trim();
@@ -7378,7 +7782,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                 };
                 const canShareFiles = (files) => !!(navigator.share && navigator.canShare && navigator.canShare({ files }));
                 $('msg-close').onclick = closeModal;
-                $('msg-tpl').onchange = () => { try { $('msg-body').value = compose($('msg-tpl').value); } catch (e) { toast('⚠️ টেমপ্লেট তৈরি করা যায়নি'); } updatePreview(); prepare(); };
+                $('msg-tpl').onchange = () => { try { $('msg-body').value = compose($('msg-tpl').value); lastComposed = $('msg-body').value; } catch (e) { toast('⚠️ টেমপ্লেট তৈরি করা যায়নি'); } updatePreview(); prepare(); };
                 $('msg-body').addEventListener('input', updatePreview);
                 $('msg-img').addEventListener('change', updatePreview);
                 // 🔗 টেমপ্লেট-লিংক: সব টেমপ্লেটের প্রিভিউ-তালিকা (এই সদস্যের ডেটা বসিয়ে) — "ব্যবহার করুন" চাপলে সেটি বাছাই হয়; এডমিনের জন্য ম্যানেজার-লিংক
@@ -7398,7 +7802,14 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                 };
                 $('msg-tpl-prev').onclick = (ev) => { ev.preventDefault(); const box = $('msg-tpl-list'); const show = box.style.display === 'none'; box.style.display = show ? 'block' : 'none'; if (show && !listBuilt) { listBuilt = true; buildTplList(); } };
                 const mgr = $('msg-open-mgr'); if (mgr) mgr.onclick = (ev) => { ev.preventDefault(); closeModal(); openEmailTemplateManager(); };
-                $('msg-att').onchange = prepare;
+                const syncRc = () => { const o = $('msg-rc-opts'); if (o) o.style.display = $('msg-att').checked ? '' : 'none'; };
+                // 🆕 [v16.5.49] ধরন/ফর্ম/লেনদেন বদলালে: রিসিপ্ট-ছবি নতুন করে তৈরি; আইটেম-টেমপ্লেটে লেনদেন বদলালে (লেখা হাতে না বদলালে) মেসেজও নতুন লেনদেনের তথ্যে
+                let lastComposed = $('msg-body').value;
+                const recompose = () => { try { if (/^t:/.test($('msg-tpl').value) && $('msg-body').value === lastComposed) { lastComposed = compose($('msg-tpl').value); $('msg-body').value = lastComposed; } } catch (e) {} };
+                $('msg-rtype').onchange = $('msg-rstyle').onchange = () => { updatePreview(); prepare(); };
+                $('msg-rtxn').onchange = () => { recompose(); updatePreview(); prepare(); };
+                $('msg-att').onchange = () => { syncRc(); prepare(); };
+                syncRc();
                 $('msg-copy').onclick = async () => { toast(await mfMsgCopy(text()) ? '✅ কপি হয়েছে' : '⚠️ কপি করা যায়নি — লেখা সিলেক্ট করে কপি করুন'); };
                 // app: 'wa' | 'fb' — প্রতিটি বাটন সবসময় নিজের অ্যাপের ওই সদস্যের চ্যাট খোলে (শেয়ার-মেনু শুধু "📤 শেয়ার মেনু" বাটনে)।
                 // রিসিপ্ট-ছবি থাকলে আগে ফোনে/কম্পিউটারে ডাউনলোড হয় — চ্যাটে 📎 দিয়ে দিতে হয় (ওয়েব থেকে সরাসরি চ্যাটে ছবি বসানোর উপায় নেই)।
