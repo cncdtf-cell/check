@@ -2,6 +2,8 @@
 <html lang="bn">
 <head>
     <meta charset="UTF-8" />
+    <!-- 🔧 [v16.5.53] আপলোডে সার্ভারের সতর্কতা (ফোল্ডার-তৈরি যায়নি ইত্যাদি) দেখায়। -->
+    <!-- 🆕 [v16.5.52] ছবি-আপলোডে 📷 ক্যামেরা + গ্যালারি, "🗑 আপলোড মুছুন", বিভাগ-ভিত্তিক ফোল্ডার, সম্পাদনায় পুরনো ছবি একই নামে প্রতিস্থাপন — Code_combined_v16_5_26.gs লাগবে। -->
     <!-- 🔧 [v16.5.51] Apps Script Web App URL নতুন ডিপ্লয়মেন্টের (v16.5.25) লিংকে বদলানো — ছবি-আপলোড ও ইমেইল দুটোই। -->
     <!-- 🔧 [v16.5.50] ছবি-আপলোড: সর্বোচ্চ ১.৫ MB (বড় ছবি ~৮০০ KB লক্ষ্যে কমপ্রেস), EXIF-ঘোরানো ছবি ঠিক, সাদা পটভূমি। -->
     <!-- 🆕 [v16.5.49] এডমিনের মতো এক-পেজ রিসিপ্ট (সাধারণ/বিস্তারিত/মাসভিত্তিক/বার্ষিক/হিসাব-বিবরণী) — ইমেইল ও 💬 WhatsApp/Messenger উভয়ে; "রিসিপ্ট" বা "ক্লাসিক" ফর্ম বাছাই; ইমেইলে 📚 টেমপ্লেটও; 💬 মডাল গোছানো। Rules/সার্ভার অপরিবর্তিত। -->
@@ -5555,7 +5557,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
         window.mfGetIdToken = window.mfGetIdToken || (async () => {
             try { const u = window._auth && window._auth.currentUser; return u ? await u.getIdToken() : ''; } catch (e) { return ''; }
         });
-        const uploadImageToDrive = async (file, personName, mobile, oldFileUrl, onProgress) => {
+        const uploadImageToDrive = async (file, personName, mobile, oldFileUrl, onProgress, folderId, category) => {
             if (!IMAGE_UPLOAD_SCRIPT_URL || IMAGE_UPLOAD_SCRIPT_URL.indexOf('PASTE_YOUR') === 0) {
                 throw new Error('Google Apps Script Web App URL এখনো সেট করা হয়নি (IMAGE_UPLOAD_SCRIPT_URL)।');
             }
@@ -5566,7 +5568,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             const res = await fetch(IMAGE_UPLOAD_SCRIPT_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                body: JSON.stringify({ action: 'upload', idToken: (window.mfGetIdToken ? await window.mfGetIdToken() : ''), imageBase64: dataUrl, mimeType, personName: personName || '', mobile: mobile || '', oldFileUrl: oldFileUrl || '' })
+                body: JSON.stringify({ action: 'upload', idToken: (window.mfGetIdToken ? await window.mfGetIdToken() : ''), imageBase64: dataUrl, mimeType, personName: personName || '', mobile: mobile || '', oldFileUrl: oldFileUrl || '', folderId: folderId || '', category: category || '' })
             });
             if (!res.ok) throw new Error('নেটওয়ার্ক এরর (' + res.status + ')');
             // 🔧 [v16.5.50] রেসপন্স JSON না হলে (লগইন-পেজ/HTML এরর) দুর্বোধ্য "Unexpected token" নয় — স্পষ্ট বার্তা; লিংক না এলেও স্পষ্ট এরর
@@ -5579,9 +5581,19 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             if (!json.success) throw new Error(json.error || 'আপলোড ব্যর্থ হয়েছে।');
             if (!json.directUrl) throw new Error('ছবি সেভ হয়েছে, কিন্তু লিংক ফেরত আসেনি — এডমিনকে জানান।');
             onProgress?.('done');
+            window.__mfUploadNote = json.note || '';   // 🆕 [v16.5.28] সার্ভারের সতর্কতা (যেমন ফোল্ডার তৈরি যায়নি)
             return json.directUrl;
         };
 
+        // 🆕 [v16.5.26/52] এইমাত্র আপলোড-করা ছবি Drive থেকে মোছা (ট্র্যাশে) — শুধু নিজের আপলোড; সার্ভার যাচাই করে
+        const deleteUploadedImage = async (fileUrl) => {
+            const res = await fetch(IMAGE_UPLOAD_SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({ action: 'delete_image', idToken: (window.mfGetIdToken ? await window.mfGetIdToken() : ''), fileUrl }) });
+            let json; try { json = JSON.parse(await res.text()); } catch (e) { throw new Error('সার্ভার থেকে সঠিক রেসপন্স আসেনি'); }
+            if (!json.success) throw new Error(json.error || 'ছবি মোছা যায়নি');
+            return true;
+        };
+        const IMG_CAT_BY_FIELD = { 'f-imageUrl': 'members', 'ue-photo': 'members', 'f-noticeImage': 'notices', 'f-announcementImage': 'announcements', 'un-image': 'notices', 's-logo-url': 'logo' };
         const imageUploadFieldHtml = (fieldId, currentUrl, label) => {
             const url = currentUrl || '';
             const previewSrc = url ? escapeHtml(toDirectImageUrl(url)) : '';
@@ -5595,10 +5607,15 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                 <div class="image-upload-controls">
                   <input type="text" id="${fieldId}" value="${escapeHtml(url)}" placeholder="https://drive.google.com/... (অথবা নিচের বাটনে ছবি আপলোড করুন)">
                   <div class="image-upload-actions">
+                    <label class="btn btn-outline btn-sm image-upload-btn" title="সরাসরি ক্যামেরা দিয়ে ছবি তুলুন ও আপলোড করুন">
+                      📷 ক্যামেরা
+                      <input type="file" accept="image/*" capture="environment" data-image-camera-input="${fieldId}" style="display:none;">
+                    </label>
                     <label class="btn btn-outline btn-sm image-upload-btn">
                       📤 ছবি আপলোড
                       <input type="file" accept="image/*" data-image-input="${fieldId}" style="display:none;">
                     </label>
+                    <button type="button" class="btn btn-outline btn-sm" data-image-del="${fieldId}" style="display:none;" title="এইমাত্র আপলোড করা ছবি Drive থেকেও মুছে ফেলুন">🗑 আপলোড মুছুন</button>
                     <button type="button" class="btn btn-outline btn-sm" data-image-clear="${fieldId}" title="ছবি সরান">✕ সরান</button>
                     <span class="image-upload-status" id="status-${fieldId}"></span>
                   </div>
@@ -5607,28 +5624,33 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             </div>`;
         };
 
-        const wireImageUploadField = (fieldId, getNameMobile) => {
+        const wireImageUploadField = (fieldId, getNameMobile, category) => {
+            category = category || IMG_CAT_BY_FIELD[fieldId] || '';
             const wrap = document.querySelector(`[data-image-field="${fieldId}"]`);
             if (!wrap) return;
             const fileInput = wrap.querySelector(`[data-image-input="${fieldId}"]`);
+            const cameraInput = wrap.querySelector(`[data-image-camera-input="${fieldId}"]`);   // 🆕 [v16.5.52] ক্যামেরা
             const urlInput = document.getElementById(fieldId);
             const preview = document.getElementById(`preview-${fieldId}`);
             const status = document.getElementById(`status-${fieldId}`);
             const clearBtn = wrap.querySelector(`[data-image-clear="${fieldId}"]`);
-
+            const delBtn = wrap.querySelector(`[data-image-del="${fieldId}"]`);
+            let justUploaded = '';
             const setPreview = (url) => {
                 preview.innerHTML = url ? `<img src="${escapeHtml(toDirectImageUrl(url))}" alt="preview">` : '<span class="ph">👤</span>';
             };
-            urlInput.addEventListener('input', () => setPreview(urlInput.value.trim()));
-
-            if (clearBtn) clearBtn.addEventListener('click', () => {
-                urlInput.value = '';
-                setPreview('');
-                status.textContent = '';
+            const syncDel = () => { if (delBtn) delBtn.style.display = (justUploaded && urlInput.value.trim() === justUploaded) ? '' : 'none'; };
+            urlInput.addEventListener('input', () => { setPreview(urlInput.value.trim()); syncDel(); });
+            if (clearBtn) clearBtn.addEventListener('click', () => { urlInput.value = ''; setPreview(''); status.textContent = ''; syncDel(); });
+            if (delBtn) delBtn.addEventListener('click', async () => {
+                if (!justUploaded || !window.confirm('এইমাত্র আপলোড করা ছবিটি Drive থেকেও মুছে ফেলবেন?')) return;
+                status.textContent = '⏳ মোছা হচ্ছে...'; status.className = 'image-upload-status uploading';
+                try { await deleteUploadedImage(justUploaded); justUploaded = ''; urlInput.value = ''; setPreview(''); status.textContent = '🗑 ছবি মোছা হয়েছে'; status.className = 'image-upload-status success'; }
+                catch (err) { status.textContent = '❌ ' + (err.message || 'মোছা যায়নি'); status.className = 'image-upload-status error'; }
+                syncDel();
             });
-
-            fileInput.addEventListener('change', async () => {
-                const file = fileInput.files && fileInput.files[0];
+            // গ্যালারি ও ক্যামেরা — দুটোই এই একই ফাংশন (কমপ্রেস + আপলোড + পুরনো ছবি প্রতিস্থাপন)
+            const handleFile = async (file, sourceInput) => {
                 if (!file) return;
                 const oldUrl = urlInput.value.trim();
                 const { name, mobile } = (getNameMobile && getNameMobile()) || {};
@@ -5638,19 +5660,19 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                     const directUrl = await uploadImageToDrive(file, name, mobile, oldUrl, (stage) => {
                         if (stage === 'compressing') status.textContent = '⏳ কমপ্রেস করা হচ্ছে...';
                         if (stage === 'uploading') status.textContent = '⏳ আপলোড হচ্ছে...';
-                    });
-                    urlInput.value = directUrl;
+                    }, '', category);
+                    urlInput.value = directUrl; justUploaded = directUrl; syncDel();
                     setPreview(directUrl);
-                    status.textContent = '✅ আপলোড সফল হয়েছে';
+                    status.textContent = '✅ আপলোড সফল হয়েছে' + (window.__mfUploadNote ? ' — ⚠️ ' + window.__mfUploadNote : '');
                     status.className = 'image-upload-status success';
                 } catch (err) {
                     console.error(err);
                     status.textContent = '❌ ' + (err.message || 'আপলোড ব্যর্থ হয়েছে');
                     status.className = 'image-upload-status error';
-                } finally {
-                    fileInput.value = '';
-                }
-            });
+                } finally { if (sourceInput) sourceInput.value = ''; }
+            };
+            fileInput.addEventListener('change', () => handleFile(fileInput.files && fileInput.files[0], fileInput));
+            if (cameraInput) cameraInput.addEventListener('change', () => handleFile(cameraInput.files && cameraInput.files[0], cameraInput));
         };
 
         const toBengaliNum = n => String(n).replace(/[0-9]/g, d => CONFIG.BN_DIGITS[parseInt(d)]);
@@ -8012,7 +8034,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                 wireImageUploadField('un-image', () => {
                     const t = document.getElementById('un-title').value.trim();
                     return { name: t ? `${label} - ${t}` : (isAnn ? 'announcement' : 'notice'), mobile: '' };
-                });
+                }, isAnn ? 'announcements' : 'notices');
                 document.getElementById('un-cancel').onclick = closeModal;
                 const saveBtn = document.getElementById('un-save');
                 let saving = false;
@@ -11004,7 +11026,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             toast('📤 ছবি পাঠানো হচ্ছে...');
             try {
                 _chatImgLog('আপলোড শুরু (Apps Script-এ পাঠানো হচ্ছে)');
-                const imageUrl = await uploadImageToDrive(file, chatImageFileTag(displayName), '', '');
+                const imageUrl = await uploadImageToDrive(file, chatImageFileTag(displayName), '', '', null, '', 'chat');
                 _chatImgLog('Drive থেকে URL এলো:', imageUrl);
                 const msg = { id: uid(), text: '', imageUrl, sender: user.email, displayName, timestamp: new Date()
                         .toISOString() };
@@ -11835,7 +11857,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             toast('📤 ছবি পাঠানো হচ্ছে...');
             try {
                 _chatImgLog('আপলোড শুরু (Apps Script-এ পাঠানো হচ্ছে)');
-                const imageUrl = await uploadImageToDrive(file, chatImageFileTag(displayName), '', '');
+                const imageUrl = await uploadImageToDrive(file, chatImageFileTag(displayName), '', '', null, '', 'chat');
                 _chatImgLog('Drive থেকে URL এলো:', imageUrl);
                 const { collection, addDoc, doc, setDoc } = window._firestore;
                 await addDoc(collection(window._firestoreDb, 'dm_threads', dmCurrentThreadId, 'messages'), {
