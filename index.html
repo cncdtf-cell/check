@@ -2,6 +2,8 @@
 <html lang="bn">
 <head>
     <meta charset="UTF-8" />
+    <!-- 🔧 [v16.5.51] Apps Script Web App URL নতুন ডিপ্লয়মেন্টের (v16.5.25) লিংকে বদলানো — ছবি-আপলোড ও ইমেইল দুটোই। -->
+    <!-- 🔧 [v16.5.50] ছবি-আপলোড: সর্বোচ্চ ১.৫ MB (বড় ছবি ~৮০০ KB লক্ষ্যে কমপ্রেস), EXIF-ঘোরানো ছবি ঠিক, সাদা পটভূমি। -->
     <!-- 🆕 [v16.5.49] এডমিনের মতো এক-পেজ রিসিপ্ট (সাধারণ/বিস্তারিত/মাসভিত্তিক/বার্ষিক/হিসাব-বিবরণী) — ইমেইল ও 💬 WhatsApp/Messenger উভয়ে; "রিসিপ্ট" বা "ক্লাসিক" ফর্ম বাছাই; ইমেইলে 📚 টেমপ্লেটও; 💬 মডাল গোছানো। Rules/সার্ভার অপরিবর্তিত। -->
     <!-- 🆕 [v16.5.48] DM-এ ➡️ ফরওয়ার্ড (ওভারলে, ব্যবহারকারী বাছাই) + দিনের বিভাজক ("আজ/গতকাল/তারিখ") যোগ। -->
     <!-- 🆕 [v16.5.47] ব্যক্তিগত মেসেজে (DM) রিয়্যাক্ট · উত্তর · পিন · কপি · এডিট · মুছুন — রিয়্যাকশন/পিন থ্রেড-ডকে; Rules অপরিবর্তিত। -->
@@ -5457,10 +5459,9 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
         // ============================================================
         // 👉 নিচের URL-টি আপনার ডিপ্লয় করা Apps Script Web App-এর URL দিয়ে বদলে দিন —
         // admin ফাইলে যে URL বসিয়েছেন, ঠিক সেটাই এখানেও বসান (একই ফোল্ডারে আপলোড হবে)।
-        const IMAGE_UPLOAD_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw_LknhiH1H_0ywZ_2sKWkqXaYRJk_vqUvIoymq1pN-wZICeHinF6LOn4QZMqFIMjzA/exec';
+        const IMAGE_UPLOAD_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxK5kpYK9eYjt0J6LTfsS4iSx-G0Ya25Us0vluEYYTtn2uNPZY1r3PITiL3Z8tozX2S/exec';
 
         const ALLOWED_IMAGE_MIME = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-        const MAX_UPLOAD_BYTES = 3 * 1024 * 1024; // ৩ MB
 
         const fileToDataUrl = (file) => new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -5477,55 +5478,48 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             img.src = url;
         });
 
+        // 🔧 [v16.5.48/50] ছবি-সংকোচন: আপলোডের ছবি সর্বোচ্চ ১.৫ MB (MAX_UPLOAD_BYTES)। ১.৫ MB-এর বড় ছবি (যেমন ২৫ MB) ~৮০০ KB লক্ষ্যে ছোট হয়ে যায়
+        // (সর্বোচ্চ ১৬০০px, JPEG মান ধাপে ধাপে কমিয়ে, দরকারে মাপও কমিয়ে)। ছোট ও পরিচিত ফরম্যাটের (≤১.৫ MB) ছবি অপরিবর্তিত যায়।
+        const MAX_UPLOAD_BYTES = 1.5 * 1024 * 1024;      // ১.৫ MB — চূড়ান্ত সীমা
+        const TARGET_BIG_BYTES = 800 * 1024;             // বড় ছবির লক্ষ্য-আকার (~৮০০ KB)
+        const dataUrlBytes = (u) => Math.round((u.length - u.indexOf(',') - 1) * 0.75);
+        const decodeImageForCanvas = async (file) => {
+            try { if (window.createImageBitmap) { const bm = await createImageBitmap(file, { imageOrientation: 'from-image' }); return { src: bm, w: bm.width, h: bm.height }; } } catch (e) { /* নিচের পুরনো পথে */ }
+            const img = await loadImageEl(file);
+            return { src: img, w: img.naturalWidth, h: img.naturalHeight };
+        };
         const compressImageFile = async (file) => {
-            // 🆕 [v16.4 ধাপ ০২] ফোনে অনেক সময় file.type খালি/অচেনা (HEIC, ক্যামেরা-ছবি) আসে — আগে এই
-            // কারণে আপলোড সরাসরি ব্যর্থ হতো। এখন type অথবা এক্সটেনশন যেকোনোটি ছবি হলেই গ্রহণ করা হয়।
             const _imgExtOk = /\.(jpe?g|png|webp|gif|bmp|heic|heif)$/i.test(file.name || '');
             const _typeIsImage = !!file.type && file.type.indexOf('image/') === 0;
             if (!_typeIsImage && !_imgExtOk) {
                 throw new Error('শুধু ছবি ফাইল নির্বাচন করুন (JPG, PNG, WEBP, HEIC ইত্যাদি)।');
             }
-            // পরিচিত ফরম্যাট ও সাইজ ঠিক থাকলে সরাসরি; অন্যথায় (অজানা type / বড় সাইজ) ক্যানভাসে JPEG-তে রূপান্তর
             if (ALLOWED_IMAGE_MIME.includes(file.type) && file.size <= MAX_UPLOAD_BYTES) return await fileToDataUrl(file);
-
-            let img;
+            let dec;
             try {
-                img = await loadImageEl(file);
+                dec = await decodeImageForCanvas(file);
             } catch (decodeErr) {
                 console.error('Image decode failed:', file.name, file.type, decodeErr);
-                throw new Error('এই ছবিটি ব্রাউজারে খোলা যায়নি। HEIC হলে ফোনের ক্যামেরা সেটিংসে "Most Compatible/JPG" করুন, অথবা স্ক্রিনশট/JPG ছবি দিন।');
+                throw new Error('এই ছবিটি ব্রাউজারে খোলা যায়নি। HEIC হলে ফোনের ক্যামেরা সেটিংসে "Most Compatible/JPG" করুন, অথবা স্ক্রিনশট/JPG নিয়ে আবার চেষ্টা করুন।');
             }
-            let width = img.naturalWidth, height = img.naturalHeight;
+            const target = file.size > MAX_UPLOAD_BYTES ? TARGET_BIG_BYTES : MAX_UPLOAD_BYTES;
+            let width = dec.w, height = dec.h;
             const maxDim = 1600;
-            if (width > maxDim || height > maxDim) {
-                const scale = maxDim / Math.max(width, height);
-                width = Math.round(width * scale);
-                height = Math.round(height * scale);
-            }
+            if (width > maxDim || height > maxDim) { const sc = maxDim / Math.max(width, height); width = Math.round(width * sc); height = Math.round(height * sc); }
             const canvas = document.createElement('canvas');
-            canvas.width = width;
-            canvas.height = height;
             const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0, width, height);
-            const outType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
-
-            let quality = 0.92;
-            let dataUrl = canvas.toDataURL(outType, quality);
-            let guard = 0;
-            while (Math.round((dataUrl.length - 30) * 0.75) > MAX_UPLOAD_BYTES && guard < 14) {
+            const draw = () => { canvas.width = width; canvas.height = height; ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, width, height); ctx.drawImage(dec.src, 0, 0, width, height); };
+            draw();
+            let quality = 0.85, dataUrl = canvas.toDataURL('image/jpeg', quality), guard = 0;
+            while (dataUrlBytes(dataUrl) > target && guard < 24) {
                 guard++;
-                if (quality > 0.4) {
-                    quality -= 0.08;
-                } else {
-                    width = Math.round(width * 0.85);
-                    height = Math.round(height * 0.85);
-                    canvas.width = width;
-                    canvas.height = height;
-                    ctx.drawImage(img, 0, 0, width, height);
-                    quality = 0.75;
-                }
-                dataUrl = canvas.toDataURL(outType, quality);
+                if (quality > 0.5) quality = Math.round((quality - 0.07) * 100) / 100;
+                else { width = Math.max(200, Math.round(width * 0.85)); height = Math.max(200, Math.round(height * 0.85)); draw(); quality = 0.7; }
+                dataUrl = canvas.toDataURL('image/jpeg', quality);
             }
+            try { if (dec.src && dec.src.close) dec.src.close(); } catch (e) { }
+            if (!dataUrl || dataUrl.length < 100) throw new Error('ছবি কমপ্রেস করা যায়নি — অন্য ছবি দিয়ে চেষ্টা করুন।');
+            if (dataUrlBytes(dataUrl) > MAX_UPLOAD_BYTES) throw new Error('ছবি ১.৫ MB-এর নিচে আনা যায়নি — ছোট ছবি দিন।');
             return dataUrl;
         };
 
@@ -5575,8 +5569,15 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                 body: JSON.stringify({ action: 'upload', idToken: (window.mfGetIdToken ? await window.mfGetIdToken() : ''), imageBase64: dataUrl, mimeType, personName: personName || '', mobile: mobile || '', oldFileUrl: oldFileUrl || '' })
             });
             if (!res.ok) throw new Error('নেটওয়ার্ক এরর (' + res.status + ')');
-            const json = await res.json();
+            // 🔧 [v16.5.50] রেসপন্স JSON না হলে (লগইন-পেজ/HTML এরর) দুর্বোধ্য "Unexpected token" নয় — স্পষ্ট বার্তা; লিংক না এলেও স্পষ্ট এরর
+            const rawText = await res.text();
+            let json;
+            try { json = JSON.parse(rawText); } catch (parseErr) {
+                console.error('Image upload: non-JSON response:', rawText.slice(0, 300));
+                throw new Error(/accounts\.google\.com|ServiceLogin/.test(rawText) ? 'Apps Script ডিপ্লয়মেন্টে Access "Anyone" নেই (এডমিনকে জানান)।' : 'Apps Script থেকে সঠিক রেসপন্স আসেনি (এডমিনকে জানান — স্ক্রিপ্ট নতুন করে ডিপ্লয় লাগতে পারে)।');
+            }
             if (!json.success) throw new Error(json.error || 'আপলোড ব্যর্থ হয়েছে।');
+            if (!json.directUrl) throw new Error('ছবি সেভ হয়েছে, কিন্তু লিংক ফেরত আসেনি — এডমিনকে জানান।');
             onProgress?.('done');
             return json.directUrl;
         };
@@ -6361,7 +6362,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
         // ======================================================================
         // ⚠️ নিচের URL-টা আপনার নিজের ডিপ্লয় করা Google Apps Script Web App-এর URL দিয়ে
         // প্রতিস্থাপন করুন (script.google.com > Deploy > New deployment > Web app)
-        const GAS_EMAIL_ENDPOINT_URL = 'https://script.google.com/macros/s/AKfycbw_LknhiH1H_0ywZ_2sKWkqXaYRJk_vqUvIoymq1pN-wZICeHinF6LOn4QZMqFIMjzA/exec';
+        const GAS_EMAIL_ENDPOINT_URL = 'https://script.google.com/macros/s/AKfycbxK5kpYK9eYjt0J6LTfsS4iSx-G0Ya25Us0vluEYYTtn2uNPZY1r3PITiL3Z8tozX2S/exec';
 
         let _jsPdfPromise = null;
         const ensureJsPDF = () => {
