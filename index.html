@@ -2,6 +2,10 @@
 <html lang="bn">
 <head>
     <meta charset="UTF-8" />
+    <!-- 🆕 [v16.5.63] চ্যাট: গ্রুপ ও DM একই ডিজাইন/ইমোজি; মেসেঞ্জার-স্টাইল 'কে কোন মেসেজ পর্যন্ত দেখেছেন' (ছোট ছবি); চ্যাট-ডকে 📎 ছবি বাটন;   -->
+    <!-- 🆕 [v16.5.56] বাগ-ফিক্স: ইউজার প্যানেলের টেবিলে প্রথম কলামের হেডার লেখা অস্পষ্ট (ধূসর) ও "নং"-এর সরু নিয়ম সব টেবিলে লাগা ("মাস" ভেঙে যাওয়া) ঠিক; মোবাইলের অটো-স্থির-প্রথম-কলাম এখন এডমিন-নিয়ন্ত্রিত (ডিফল্ট বন্ধ); এডমিনের টেবিল-নীতি (লেখা সাইজ/Wrap/ঘনত্ব/ডোরাকাটা/টুলবার লুকানো) প্রয়োগ। admin_v16_5_58-এর সাথে ব্যবহার করুন। -->
+    <!-- 🆕 [v16.5.55] ডিটেলস মডালে এডমিনের কলাম-কনফিগের সাথে মিল: রিসিপ্ট নং কলাম যোগ (এডমিনের সেটিংসে দেখাবে/লুকাবে), ফ্রিজ নির্ভরযোগ্য (data-mf-tid)। admin_v16_5_57-এর সাথে ব্যবহার করুন। -->
+    <!-- 🆕 [v16.5.54] এডমিনের "👥 ইউজার ভিউ → সবসময় দেখাবে" (showToUsers) কলাম এডমিনের নিজের চেকবক্স বন্ধ থাকলেও ইউজার/পার্সোনালে দেখায়। admin_v16_5_56-এর সাথে ব্যবহার করুন। -->
     <!-- 🔧 [v16.5.53] আপলোডে সার্ভারের সতর্কতা (ফোল্ডার-তৈরি যায়নি ইত্যাদি) দেখায়। -->
     <!-- 🆕 [v16.5.52] ছবি-আপলোডে 📷 ক্যামেরা + গ্যালারি, "🗑 আপলোড মুছুন", বিভাগ-ভিত্তিক ফোল্ডার, সম্পাদনায় পুরনো ছবি একই নামে প্রতিস্থাপন — Code_combined_v16_5_26.gs লাগবে। -->
     <!-- 🔧 [v16.5.51] Apps Script Web App URL নতুন ডিপ্লয়মেন্টের (v16.5.25) লিংকে বদলানো — ছবি-আপলোড ও ইমেইল দুটোই। -->
@@ -3936,6 +3940,19 @@
             font-size: 12px;
             padding-left: 6px;
             padding-right: 6px;
+        }
+        /* 🔧 [v16.5.56] হেডারের প্রথম ঘরের লেখা আগে ধূসর (--ink-soft) হয়ে সবুজ ব্যাকগ্রাউন্ডে অস্পষ্ট হতো */
+        table thead th:first-child { color: var(--gold-100); }
+        body.dark-mode table thead th:first-child { color: var(--gold-300); }
+        /* 🔧 "নং" ছাড়া অন্য কলাম (মাস/তারিখ/নাম…) প্রথম হলে সরু-২৬px নিয়ম আর লাগবে না — আগে "June-2026" ভেঙে যেত */
+        table thead th:first-child[data-col-key]:not([data-col-key="no"]) { width: auto; max-width: none; text-align: left; font-size: var(--fs-sm, 12.5px); padding-left: 11px; padding-right: 11px; }
+        table:has(> thead > tr > th:first-child[data-col-key]:not([data-col-key="no"])) > tbody > tr > td:first-child { width: auto; max-width: none; text-align: left; color: inherit; font-weight: inherit; font-size: inherit; padding-left: 11px; padding-right: 11px; }
+        /* 🆕 [v16.5.56] এডমিন-নিয়ন্ত্রিত টেবিল-নীতি (app_settings/table_prefs) */
+        html.tp-hide-tools .tbl-tools { display: none !important; }
+        html.tp-zebra-off tbody tr:nth-child(even) { background: transparent !important; }
+        @media screen {
+            html.tp-dens-compact table:not(.no-tbl-font) th, html.tp-dens-compact table:not(.no-tbl-font) td { padding-top: 3px !important; padding-bottom: 3px !important; line-height: 1.3 !important; }
+            html.tp-dens-comfy table:not(.no-tbl-font) th, html.tp-dens-comfy table:not(.no-tbl-font) td { padding-top: 14px !important; padding-bottom: 14px !important; line-height: 1.6 !important; }
         }
         tbody tr:nth-child(even) { background: rgba(14, 43, 34, .028); }
         body.dark-mode tbody tr:nth-child(even) { background: rgba(255, 255, 255, .02); }
@@ -9150,7 +9167,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
         const getGlobalColFlags = (tableId, key) => {
             const t = GLOBAL_COL_VISIBILITY.tables && GLOBAL_COL_VISIBILITY.tables[tableId];
             const c = t && t[key];
-            return { hidden: !!(c && c.hidden), confidentialOnly: !!(c && c.confidentialOnly) };
+            return { hidden: !!(c && c.hidden), confidentialOnly: !!(c && c.confidentialOnly), showToUsers: !!(c && c.showToUsers) };
         };
 
         // এডমিন এই কলামটি এই ইউজারের জন্য দেখাতে দিয়েছেন কিনা।
@@ -9583,7 +9600,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
         const visibleColumnKeys = (tableId, defaultColumns) => {
             const config = effectiveColumnConfig(tableId, defaultColumns);
             const _vk = [...config.columns].sort((a, b) => a.order - b.order)
-                .filter(c => c.visible && _isColumnAllowedForCurrentUser(tableId, c.key))
+                .filter(c => (c.visible || getGlobalColFlags(tableId, c.key).showToUsers) && _isColumnAllowedForCurrentUser(tableId, c.key))   // 🆕 [v16.5.54] এডমিন নিজে লুকালেও "ইউজারে সবসময় দেখাবে" থাকলে দেখায়
                 .map(c => c.key);
             (window.__mfColKeys = window.__mfColKeys || {})[tableId] = _vk; // 🔧 [ধাপ ৩] ফ্রিজ-ইঞ্জিনের জন্য
             return _vk;
@@ -11575,11 +11592,11 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
         //  উত্তর মেসেজের নিজের ডকে (replyTo); এডিট/মোছা শুধু নিজের মেসেজ (আগের Rules অনুযায়ী)। পুরনো মেসেজে এসব ফিল্ড না থাকলেও সমস্যা নেই।
         // ======================================================================
         let dmxThread = { reactions: {}, pins: {} };
-        let dmxReply = null, dmxMenuFor = null, dmxMsgs = [], dmxLastCount = -1, dmxPinIdx = 0, dmxThreadUnsub = null;
+        let dmxMoreFor = null, dmxReply = null, dmxMenuFor = null, dmxMsgs = [], dmxLastCount = -1, dmxPinIdx = 0, dmxThreadUnsub = null;
         const DMX_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏', '🤲', '👎'];
         const dmxMe = () => (window.currentUser && window.currentUser.email) || '';
         const dmxKey = (email) => String(email || '').trim().toLowerCase().replace(/[.#$\[\]\/~*]/g, '_');
-        const dmxReset = () => { try { const f = document.getElementById('dmx-fwd'); if (f) f.remove(); } catch (e) {} dmxThread = { reactions: {}, pins: {} }; dmxReply = null; dmxMenuFor = null; dmxMsgs = []; dmxLastCount = -1; dmxPinIdx = 0; };
+        const dmxReset = () => { try { const f = document.getElementById('dmx-fwd'); if (f) f.remove(); } catch (e) {} dmxThread = { reactions: {}, pins: {} }; dmxReply = null; dmxMenuFor = null; dmxMoreFor = null; dmxMsgs = []; dmxLastCount = -1; dmxPinIdx = 0; };
         const dmxEnsureCss = () => {
             if (document.getElementById('dmx-css')) return;
             const st = document.createElement('style'); st.id = 'dmx-css';
@@ -11738,28 +11755,41 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             const first = dmxLastCount < 0, grew = msgs.length > dmxLastCount;
             const near = el.scrollHeight - el.scrollTop - el.clientHeight < 90, prevTop = el.scrollTop;
             dmxMsgs = msgs; dmxLastCount = msgs.length;
-            const me = dmxMe(), mk = dmxKey(me), tickOn = typeof dmOtherLastReadAt !== 'undefined';
+            const me = dmxMe(), mk = dmxKey(me);
+            cdEnsureCss(); el.classList.add('cd-tab-msgs');
             let _lastDay = '';
+            // 🆕 [v16.5.63] মেসেঞ্জার-স্টাইল: অপরপক্ষ যে পর্যন্ত পড়েছেন, আমার সেই সর্বশেষ মেসেজের নিচে তাঁর ছোট ছবি
+            let seenId = '', lastMineId = '';
+            msgs.forEach(x => { if (x.sender === me) { lastMineId = x.id; if (dmOtherLastReadAt && x.timestamp && new Date(x.timestamp) <= new Date(dmOtherLastReadAt)) seenId = x.id; } });
+            const oth = dmOtherEmail || '';
             el.innerHTML = msgs.length ? msgs.map(m => {
                 const mine = m.sender === me;
                 const _dk = m.timestamp ? dmxDayKey(m.timestamp) : '';
-                const dayHtml = (_dk && _dk !== _lastDay) ? `<div class="dmx-day"><span>${escapeHtml(dmxDayLabel(m.timestamp))}</span></div>` : '';
+                const dayHtml = (_dk && _dk !== _lastDay) ? `<div class="cd-day"><span>${escapeHtml(dmxDayLabel(m.timestamp))}</span></div>` : '';
                 if (_dk) _lastDay = _dk;
-                const seen = tickOn && mine && dmOtherLastReadAt && m.timestamp && new Date(m.timestamp) <= new Date(dmOtherLastReadAt);
-                const tick = (tickOn && mine) ? `<span class="msg-tick ${seen ? 'seen' : ''}">✓✓</span>` : '';
+                const nm = m.senderName || cdName(m.sender);
                 const rx = dmxThread.reactions[m.id] || {}, counts = {}, myR = rx[mk] || '';
                 Object.keys(rx).forEach(k => { if (rx[k]) counts[rx[k]] = (counts[rx[k]] || 0) + 1; });
-                const chips = Object.keys(counts).map(e => `<span class="dmx-chip${e === myR ? ' mine' : ''}" data-dmx-react="${m.id}" data-emoji="${e}">${e}${counts[e] > 1 ? ' ' + counts[e] : ''}</span>`).join('');
-                const q = m.replyTo ? `<div class="dmx-quote" data-dmx-goto="${escapeHtml(m.replyTo.id || '')}"><b>${escapeHtml(m.replyTo.name || '')}</b><span>${escapeHtml(m.replyTo.text || '')}</span></div>` : '';
+                const chips = Object.keys(counts).sort((x, y) => DMX_EMOJIS.indexOf(x) - DMX_EMOJIS.indexOf(y)).map(e => `<button type="button" data-mf-noicon class="cd-chip${e === myR ? ' mine' : ''}" data-dmx-react="${m.id}" data-emoji="${e}">${e}<small>${counts[e]}</small></button>`).join('');
+                const q = m.replyTo ? `<div class="cd-quote" data-dmx-goto="${escapeHtml(m.replyTo.id || '')}"><b>${escapeHtml(m.replyTo.name || '')}</b><span>${escapeHtml(m.replyTo.text || '')}</span></div>` : '';
                 const pinned = !!(dmxThread.pins && dmxThread.pins[m.id]);
-                const menu = dmxMenuFor === m.id ? `<div class="dmx-menu"><div class="dmx-emojis">${DMX_EMOJIS.map(e => `<span data-dmx-react="${m.id}" data-emoji="${e}" class="${e === myR ? 'on' : ''}">${e}</span>`).join('')}</div><div class="dmx-acts"><button type="button" data-dmx-act="reply" data-id="${m.id}">↩ উত্তর</button><button type="button" data-dmx-act="pin" data-id="${m.id}">${pinned ? '📌 আনপিন' : '📌 পিন'}</button><button type="button" data-dmx-act="fwd" data-id="${m.id}">➡️ ফরওয়ার্ড</button>${m.text ? `<button type="button" data-dmx-act="copy" data-id="${m.id}">📋 কপি</button>` : ''}${mine && m.text ? `<button type="button" data-dmx-act="edit" data-id="${m.id}">✎ এডিট</button>` : ''}${mine ? `<button type="button" data-dmx-act="del" data-id="${m.id}">🗑 মুছুন</button>` : ''}</div></div>` : '';
-                return dayHtml + `<div class="chat-msg ${mine ? 'me' : 'other'} dmx-msg" id="dmx-m-${m.id}" data-dmx-msg="${m.id}">
-                  ${pinned ? '<div class="dmx-pin">📌 পিন করা</div>' : ''}${q}
-                  ${m.imageUrl ? `<div class="msg-image"><img src="${escapeHtml(toDirectImageUrl(m.imageUrl))}" data-preview-image="${escapeHtml(m.imageUrl)}" style="max-width:220px;max-height:220px;border-radius:10px;cursor:zoom-in;display:block;"></div>` : ''}
-                  ${m.text ? `<div class="msg-text">${escapeHtml(m.text)}${m.editedAt ? ' <span class="muted small">(এডিটেড)</span>' : ''}</div>` : ''}
-                  <div class="msg-time">${m.timestamp ? fmtDate(m.timestamp) : ''}${tick}<button type="button" class="dmx-more" data-dmx-more="${m.id}" title="অপশন">⋯</button></div>
-                  ${chips ? `<div class="dmx-chips">${chips}</div>` : ''}${menu}
-                </div>`;
+                const menu = dmxMenuFor === m.id ? `<div class="dmx-menu"><div class="cd-pick">${DMX_EMOJIS.map(e => `<button type="button" data-mf-noicon class="${e === myR ? 'on' : ''}" data-dmx-react="${m.id}" data-emoji="${e}">${e}</button>`).join('')}</div>
+                    <div class="cd-acts"><button type="button" data-dmx-act="reply" data-id="${m.id}">↩ উত্তর</button>${m.text ? `<button type="button" data-dmx-act="copy" data-id="${m.id}">📋 কপি</button>` : ''}<button type="button" class="${dmxMoreFor === m.id ? 'on' : ''}" data-dmx-more="${m.id}">⋯ আরও</button></div>
+                    ${dmxMoreFor === m.id ? `<div class="cd-acts"><button type="button" data-dmx-act="pin" data-id="${m.id}">📌 ${pinned ? 'পিন সরান' : 'পিন করুন'}</button><button type="button" data-dmx-act="fwd" data-id="${m.id}">➡️ ফরওয়ার্ড</button>${mine && m.text ? `<button type="button" data-dmx-act="edit" data-id="${m.id}">✎ সম্পাদনা</button>` : ''}${mine ? `<button type="button" data-dmx-act="del" data-id="${m.id}">🗑 মুছুন</button>` : ''}</div>` : ''}</div>` : '';
+                const seenHtml = (m.id === seenId && oth) ? `<div class="cd-seen" title="${escapeHtml(cdName(oth))} দেখেছেন">${cdAvatar(oth, cdName(oth), 16)}</div>`
+                    : (m.id === lastMineId ? `<div class="cd-seen"><span class="cd-seen-t">✓ পাঠানো হয়েছে</span></div>` : '');
+                return dayHtml + `<div class="cd-row ${mine ? 'me' : ''}" id="dmx-m-${m.id}">
+                  ${mine ? '' : cdAvatar(m.sender, nm, 30)}
+                  <div class="cd-col">
+                    <div class="cd-bub" data-dmx-msg="${m.id}">
+                      ${q}${m.forwarded ? `<div class="cd-fwd">↪ ফরওয়ার্ড করা মেসেজ</div>` : ''}
+                      ${m.imageUrl ? `<img class="cd-img" src="${escapeHtml(toDirectImageUrl(m.imageUrl))}" data-preview-image="${escapeHtml(m.imageUrl)}" alt="">` : ''}
+                      ${m.text ? `<div class="cd-tx">${escapeHtml(m.text)}${m.editedAt ? ' <span class="small" style="opacity:.7;">(এডিটেড)</span>' : ''}</div>` : ''}
+                      <div class="cd-tm">${pinned ? '📌 ' : ''}${m.timestamp ? escapeHtml(cdTime(m.timestamp)) : ''}</div>
+                    </div>
+                    ${chips ? `<div class="cd-chips">${chips}</div>` : ''}${menu}
+                  </div>
+                </div>${seenHtml}`;
             }).join('') : `<div class="chat-empty"><div class="em">💬</div><div>এখনো কোনো মেসেজ নেই</div><div class="small muted">প্রথম মেসেজ পাঠিয়ে আলাপ শুরু করুন</div></div>`;
             if (first || grew || near) el.scrollTop = el.scrollHeight; else el.scrollTop = prevTop;
             el.querySelectorAll('[data-preview-image]').forEach(img => { img.addEventListener('click', () => openImagePreview(img.dataset.previewImage, { el: img })); });
@@ -11770,11 +11800,12 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             el.dataset.dmxWired = '1'; dmxEnsureCss();
             el.addEventListener('click', (ev) => {
                 const t = ev.target; let b;
+                if ((b = t.closest('[data-dmx-more]'))) { const id = b.dataset.dmxMore; dmxMoreFor = dmxMoreFor === id ? null : id; dmxRerender(); return; }
                 if ((b = t.closest('[data-dmx-react]'))) { dmxReact(b.dataset.dmxReact, b.dataset.emoji); return; }
                 if ((b = t.closest('[data-dmx-act]'))) { dmxAct(b.dataset.dmxAct, b.dataset.id); return; }
                 if ((b = t.closest('[data-dmx-goto]'))) { dmxGoto(b.dataset.dmxGoto); return; }
                 if (t.closest('[data-preview-image]') || t.closest('.dmx-menu')) return;
-                if ((b = t.closest('[data-dmx-more]') || t.closest('[data-dmx-msg]'))) { const id = b.dataset.dmxMore || b.dataset.dmxMsg; dmxMenuFor = dmxMenuFor === id ? null : id; dmxRerender(); }
+                if ((b = t.closest('[data-dmx-msg]'))) { const id = b.dataset.dmxMsg; dmxMenuFor = dmxMenuFor === id ? null : id; dmxMoreFor = null; dmxRerender(); }
             });
         };
         // থ্রেড-ডক লিসেনার (রিয়্যাকশন/পিন রিয়েল-টাইম)। personal-এ বিদ্যমান listenDmThread-ই dmxApplyThread ডাকে; admin-এ এটি আলাদা।
@@ -13219,20 +13250,22 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
         // "কার্যক্রম" কলাম শুধু এডমিনের — এখানে বাদ। data-fit-auto: প্রস্থ সেট না থাকলেও মডালে ফিট হয় (ওভারল্যাপ ঠেকাতে)।
         window.MEMBER_DETAILS_MONTHLY_YEARLY_DEFAULT_COLUMNS = [
             { key: 'month', label: 'মাস' }, { key: 'date', label: 'তারিখ' }, { key: 'amount', label: 'পরিমাণ' },
-            { key: 'method', label: 'মেথড' }, { key: 'collector', label: 'সংগ্রাহক' }, { key: 'remarks', label: 'মন্তব্য' },
+            { key: 'method', label: 'মেথড' }, { key: 'rno', label: 'রিসিপ্ট নং', after: 'method' }, { key: 'collector', label: 'সংগ্রাহক' }, { key: 'remarks', label: 'মন্তব্য' },
             { key: 'actions', label: 'কার্যক্রম' }
         ];
         const _mdCellsMonthly = {
             month: { label: 'মাস', td: (r) => `<td>${escapeHtml(r.month)}</td>` },
             amount: { label: 'পরিমাণ', thClass: 'num', td: (r) => `<td class="num">${fmtMoney(r.amount)}</td>` },
             method: { label: 'মেথড', td: (r) => `<td class="muted">${escapeHtml(r.method)}</td>` },
-            collector: { label: 'সংগ্রাহক', td: (r) => `<td class="muted">${escapeHtml(r.collector)}</td>` }
+            collector: { label: 'সংগ্রাহক', td: (r) => `<td class="muted">${escapeHtml(r.collector)}</td>` },
+            rno: { label: 'রিসিপ্ট নং', td: (r) => { const mp = (state.settings && state.settings.receiptNoMap && state.settings.receiptNoMap.assigned) || {}; return `<td class="muted">${escapeHtml(mp[r.id] || '—')}</td>`; } }
         };
         const _mdCellsYearly = {
             date: { label: 'তারিখ', td: (r) => `<td>${fmtDate(r.date)}</td>` },
             amount: { label: 'পরিমাণ', thClass: 'num', td: (r) => `<td class="num">${fmtMoney(r.amount)}</td>` },
             method: { label: 'মেথড', td: (r) => `<td class="muted">${escapeHtml(r.method)}</td>` },
             collector: { label: 'সংগ্রাহক', td: (r) => `<td class="muted">${escapeHtml(r.collector)}</td>` },
+            rno: { label: 'রিসিপ্ট নং', td: (r) => { const mp = (state.settings && state.settings.receiptNoMap && state.settings.receiptNoMap.assigned) || {}; return `<td class="muted">${escapeHtml(mp[r.id] || '—')}</td>`; } },
             remarks: { label: 'মন্তব্য', td: (r) => `<td class="muted small">${escapeHtml(r.remarks)}</td>` }
         };
         const memberDetailsSubTableHtml = (cellDefs, rows) => {
@@ -13247,7 +13280,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                 return thHtmlWithResize(k, label, cell.thClass, c ? c.width : null);
             }).join('');
             const body = rows.map(r => `<tr>${keys.map(k => cellDefs[k].td(r)).join('')}</tr>`).join('');
-            return `<table style="min-width:0;" data-fit-auto="1"><thead><tr>${thead}</tr></thead><tbody>${body}</tbody></table>`;
+            return `<table style="min-width:0;" data-fit-auto="1" data-mf-tid="${tableId}"><thead><tr>${thead}</tr></thead><tbody>${body}</tbody></table>`;
         };
 
         const openMemberDetails = (memberId) => {
@@ -15975,17 +16008,26 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
         body.dark-mode .cd-fw-item:hover{background:rgba(255,255,255,.08)}
         .cd-acts button{font:inherit;font-size:12px;background:var(--paper-raised,#fff);color:var(--ink,#0e2b22);border:1px solid var(--line,#e1dac6);border-radius:999px;padding:2px 10px;cursor:pointer}
         .cd-tab-msgs{background:var(--paper,#f6f3ea);border-radius:12px;padding:12px 10px 4px}
-        .cd-seen{display:flex;justify-content:flex-end;align-items:center;gap:0;font-size:10.5px;opacity:.85;margin:0 2px 8px}
-        .cd-seen>span{margin-right:7px}
-        .cd-seen .cd-av{margin-left:-4px;border-width:1px}
-        .cd-seen .cd-av:first-of-type{margin-left:0}
+        .cd-seen{display:flex;justify-content:flex-end;align-items:center;gap:3px;font-size:10.5px;opacity:.9;margin:0 4px 8px}
+        .cd-seen .cd-av{margin-left:0;border-width:1px}
+        .cd-seen-t{opacity:.75}
         .cd-typing{font-size:12px;padding:2px 14px 4px;min-height:0;background:var(--paper,#f6f3ea);color:var(--ink-soft,#2c4a3e)}
         .cd-typing:empty{display:none}
         .cd-empty{text-align:center;padding:40px 10px;opacity:.7;font-size:14px}
         .cd-inp{display:flex;gap:8px;align-items:flex-end;padding:8px 10px calc(8px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--line,#e1dac6);background:var(--paper-raised,#fff);flex-shrink:0}
         .cd-inp textarea{flex:1;resize:none;border-radius:20px;padding:9px 14px;font:inherit;font-size:14.5px;max-height:110px;min-height:40px;box-sizing:border-box}
+        .cd-att{width:42px;height:42px;border-radius:50%;border:1px solid var(--line,#e1dac6);background:var(--paper-raised,#fff);color:var(--emerald-700,#17513c);cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+        body.dark-mode .cd-att{color:var(--gold-300)}
         .cd-send{width:42px;height:42px;border-radius:50%;border:0;background:var(--emerald-700,#17513c);color:#fff;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center}
         body.dark-mode .cd-send{background:var(--gold-500)}
+        /* 🆕 [v16.5.63] ব্যক্তিগত মেসেজ (DM) গ্রুপ-চ্যাটের মতোই দেখাবে */
+        #dm-messages.cd-tab-msgs{padding:10px 10px 4px}
+        .dmx-menu{background:none!important;border:0!important;padding:0!important;margin:0!important;box-shadow:none!important}
+        .dmx-flash .cd-bub{animation:cdFlash 1.2s ease}
+        #dmx-pinbar{display:flex;align-items:center;gap:8px;padding:6px 12px;background:var(--gold-100,#f7ecd0);border:0;border-bottom:1px solid var(--line,#e1dac6);border-radius:10px 10px 0 0;margin:0;font-size:12.5px;cursor:pointer;color:var(--ink,#0e2b22)}
+        body.dark-mode #dmx-pinbar{background:#3a3220;color:#f3efe2}
+        #dmx-replybar{display:flex;align-items:center;gap:8px;padding:6px 12px;background:var(--gold-100,#f7ecd0);border:0;border-top:1px solid var(--line,#e1dac6);border-radius:0;margin:0;font-size:12.5px;color:var(--ink,#0e2b22)}
+        body.dark-mode #dmx-replybar{background:#3a3220;color:#f3efe2}
         @media print{.cd-bar-wrap,#cd-panel,#cd-backdrop{display:none!important}}
         `;
         const cdEnsureCss = () => {
@@ -16051,14 +16093,26 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
             return (state.chat || []).filter(m => m.sender !== me && new Date(m.timestamp).getTime() > t).length;
         };
 
-        const cdSeenHtml = (m) => {
-            const t = new Date(m.timestamp).getTime();
-            const viewers = Object.entries(chatReadsMap)
-                .filter(([em, r]) => em !== m.sender && r && r.lastReadAt && new Date(r.lastReadAt).getTime() >= t)
-                .map(([em]) => em);
-            if (!viewers.length) return m.sender === cdMe() ? `<div class="cd-seen"><span>কেউ এখনো দেখেননি</span></div>` : '';
-            const shown = viewers.slice(0, 6).map(em => `<span title="${escapeHtml(cdName(em))}">${cdAvatar(em, cdName(em), 18)}</span>`).join('');
-            return `<div class="cd-seen"><span>দেখেছেন</span>${shown}${viewers.length > 6 ? `<span style="margin-left:5px;">+${viewers.length - 6}</span>` : ''}</div>`;
+        // 🆕 [v16.5.63] মেসেঞ্জার-স্টাইল "কে কোন মেসেজ পর্যন্ত দেখেছেন": প্রতিজনের সর্বশেষ-পঠিত মেসেজের নিচে তাঁর ছোট ছবি
+        const cdSeenMap = () => {
+            const msgs = cdSortedMsgs(), map = {};
+            Object.entries(chatReadsMap).forEach(([em, r]) => {
+                if (!r || !r.lastReadAt) return;
+                const t = new Date(r.lastReadAt).getTime();
+                for (let k = msgs.length - 1; k >= 0; k--) {
+                    const x = msgs[k];
+                    if (x.sender === em) continue;   // নিজের পাঠানো মেসেজে নিজের "দেখেছেন" দেখানো হয় না
+                    if (new Date(x.timestamp).getTime() <= t) { (map[x.id] = map[x.id] || []).push(em); break; }
+                }
+            });
+            return map;
+        };
+        const cdSeenHtml = (m, smap, lastId) => {
+            const me = cdMe();
+            const v = ((smap && smap[m.id]) || []).filter(em => em !== me);
+            if (!v.length) return (m.id === lastId && m.sender === me) ? `<div class="cd-seen"><span class="cd-seen-t">✓ পাঠানো হয়েছে</span></div>` : '';
+            const shown = v.slice(0, 7).map(em => `<span title="${escapeHtml(cdName(em))} দেখেছেন">${cdAvatar(em, cdName(em), 16)}</span>`).join('');
+            return `<div class="cd-seen">${shown}${v.length > 7 ? `<span class="cd-seen-t">+${v.length - 7}</span>` : ''}</div>`;
         };
 
         const cdBarHtml = () => {
@@ -16085,6 +16139,7 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
             const msgs = cdSortedMsgs();
             if (!msgs.length) return `<div class="cd-empty"><div style="font-size:34px;">💬</div>কোনো মেসেজ নেই<br><small>প্রথম মেসেজ পাঠান</small></div>`;
             const lastId = msgs[msgs.length - 1].id;
+            const smap = cdSeenMap();
             let prevDay = '';
             return msgs.map(m => {
                 const mine = m.sender === me;
@@ -16095,11 +16150,11 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
                 const rx = cdReacts(m.id);
                 const myRx = (chatReadsMap[me] && chatReadsMap[me].reactions && chatReadsMap[me].reactions[m.id]) || '';
                 const chips = Object.entries(rx).sort((a, b) => CD_REACTIONS.indexOf(a[0]) - CD_REACTIONS.indexOf(b[0])).map(([e, ems]) =>
-                    `<button type="button" class="cd-chip ${ems.includes(me) ? 'mine' : ''}" data-cd-react="${m.id}" data-emoji="${e}" title="${escapeHtml(ems.map(x => cdName(x)).join(', '))}">${e}<small>${ems.length}</small></button>`).join('');
+                    `<button type="button" data-mf-noicon class="cd-chip ${ems.includes(me) ? 'mine' : ''}" data-cd-react="${m.id}" data-emoji="${e}" title="${escapeHtml(ems.map(x => cdName(x)).join(', '))}">${e}<small>${ems.length}</small></button>`).join('');
                 const canDel = mine || isAdminUser();
                 const canEd = (mine || isAdminUser()) && !m.imageUrl;
                 const pinned = cdIsPinned(m);
-                const picker = _cdPickFor === m.id ? `<div class="cd-pick">${CD_REACTIONS.map(e => `<button type="button" class="${e === myRx ? 'on' : ''}" data-cd-react="${m.id}" data-emoji="${e}">${e}</button>`).join('')}</div>
+                const picker = _cdPickFor === m.id ? `<div class="cd-pick">${CD_REACTIONS.map(e => `<button type="button" data-mf-noicon class="${e === myRx ? 'on' : ''}" data-cd-react="${m.id}" data-emoji="${e}">${e}</button>`).join('')}</div>
                     <div class="cd-acts">
                       <button type="button" data-cd-reply="${m.id}">↩ উত্তর</button>
                       <button type="button" data-cd-copy="${m.id}">📋 কপি</button>
@@ -16128,7 +16183,7 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
                     ${picker}
                   </div>
                 </div>
-                ${m.id === lastId ? cdSeenHtml(m) : ''}`;
+                ${cdSeenHtml(m, smap, lastId)}`;
             }).join('');
         };
 
@@ -16380,6 +16435,7 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
         const cdHandleClick = (e) => {
             const t = e.target;
             if (t.closest('[data-cd-close]')) { cdClose(); return; }
+            if (t.closest('#cd-att')) { if (!window.currentUser) { toast('ছবি পাঠাতে লগইন করুন'); openLoginModal(); return; } try { pickChatImage('group'); } catch (er) { toast('❌ ছবি বাছাই চালু করা যায়নি'); } return; }
             const rb = t.closest('[data-cd-react]');
             if (rb) { cdReact(rb.dataset.cdReact, rb.dataset.emoji); return; }
             const gt = t.closest('[data-cd-goto]');
@@ -16430,6 +16486,7 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
               <div id="cd-typing" class="cd-typing"></div>
               <div class="cd-replybar"></div>
               <div class="cd-inp">
+                <button type="button" class="cd-att" id="cd-att" aria-label="ছবি পাঠান" title="ছবি পাঠান (সর্বোচ্চ ১০ এমবি)"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.4 11.1l-8.5 8.5a5.5 5.5 0 0 1-7.8-7.8l8.5-8.5a3.7 3.7 0 0 1 5.2 5.2l-8.5 8.5a1.8 1.8 0 0 1-2.6-2.6l7.8-7.8"/></svg></button>
                 <textarea id="cd-input" rows="1" placeholder="মেসেজ লিখুন..."></textarea>
                 <button type="button" class="cd-send" id="cd-send" aria-label="পাঠান"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg></button>
               </div>`;
@@ -17376,7 +17433,7 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
                 }
 
                 log('সার্ভিস ওয়ার্কার রেজিস্টার করা হচ্ছে (/firebase-messaging-sw.js)...');
-                const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+                const registration = await navigator.serviceWorker.register('./firebase-messaging-sw.js');
                 log('✅ সার্ভিস ওয়ার্কার রেজিস্টার সফল।');
 
                 let permission = Notification.permission;
@@ -18115,7 +18172,7 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
     } catch (e) {}
     apply();
 
-    var loadedUid = '';
+    var loadedUid = '';  /* (টেবিল-নীতি নিচে প্রয়োগ হবে) */
     var loadCloud = function () {
         var u = uid();
         if (!u || loadedUid === u || !window._firestore || !window._firestoreDb) return;
@@ -18128,6 +18185,36 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
         } catch (e) { console.error('[টেবিল-টুলবার]', e); }
     };
     window.loadTableFontPref = function () { loadedUid = ''; loadCloud(); };
+
+    /* ---------- 🆕 [v16.5.56] এডমিন-নিয়ন্ত্রিত টেবিল-নীতি: app_settings/table_prefs ---------- */
+    var TP = null, TP_KEY = 'mahfil_table_policy_v1';
+    var hasOwnPref = function () { try { return !!localStorage.getItem('tblPrefs:last'); } catch (e) { return false; } };
+    var applyPolicy = function () {
+        var p = TP || {};
+        html.classList.toggle('tp-hide-tools', p.userTools === 'hide');
+        html.classList.toggle('tp-zebra-off', p.zebra === false);
+        html.classList.toggle('tp-dens-compact', p.density === 'compact');
+        html.classList.toggle('tp-dens-comfy', p.density === 'comfy');
+        window.__mfStickyFirst = p.stickyFirst === true;
+        if (typeof window.mfStickyRefresh === 'function') window.mfStickyRefresh();
+        if (TP && (p.force || p.userTools === 'hide' || !hasOwnPref())) {
+            if (p.scale) scale = nearest(p.scale);
+            if (p.wrapMode && MODES.indexOf(p.wrapMode) >= 0) wrapMode = p.wrapMode;
+            apply();
+        }
+    };
+    window.mfApplyTablePolicy = function (d) { TP = d || null; try { localStorage.setItem(TP_KEY, JSON.stringify(TP)); } catch (e) {} applyPolicy(); };
+    try { TP = JSON.parse(localStorage.getItem(TP_KEY) || 'null'); } catch (e) { TP = null; }
+    if (TP) applyPolicy();
+    var tpTries = 0, tpTimer = setInterval(function () {
+        if (++tpTries > 120) { clearInterval(tpTimer); return; }
+        if (!(window.currentUser && window._firestore && window._firestoreDb)) return;
+        clearInterval(tpTimer);
+        try {
+            var f = window._firestore;
+            f.onSnapshot(f.doc(window._firestoreDb, 'app_settings', 'table_prefs'), function (sn) { window.mfApplyTablePolicy(sn.exists() ? sn.data() : null); }, function (err) { console.error('[টেবিল-নীতি]', err); });
+        } catch (e) { console.error('[টেবিল-নীতি]', e); }
+    }, 1000);
 
     document.addEventListener('click', function (e) {
         var t = e.target;
@@ -18389,7 +18476,7 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
         }
         var keys = ths.map(function (th) { return th.getAttribute('data-col-key') || ''; });
         var present = keys.filter(Boolean);
-        var id = present.length ? tableIdFor(present) : null;
+        var id = table.getAttribute('data-mf-tid') || (present.length ? tableIdFor(present) : null);   // 🆕 [v16.5.55]
         var frozen = id ? getKeys(id) : [];
         var idxs = [];
         keys.forEach(function (k, ix) { if (k && frozen.indexOf(k) >= 0) idxs.push(ix); });
@@ -18701,6 +18788,13 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
     var mo = null;
     var stickyPass = function () {
         if (!mqMobile.matches) return;
+        if (!window.__mfStickyFirst) {   // 🆕 [v16.5.56] অটো-স্থির-প্রথম-কলাম এখন এডমিনের সেটিংয়ে (ডিফল্ট বন্ধ) — ফ্রিজ করতে চাইলে কলাম-সেটিংসের ❄️ ব্যবহার করুন
+            var ol = document.querySelectorAll('.mf-s1');
+            for (var q = 0; q < ol.length; q++) ol[q].classList.remove('mf-s1');
+            var tt = document.querySelectorAll('.table-wrap table');
+            for (var z = 0; z < tt.length; z++) { tt[z].__mfS1 = 0; tt[z].__mfN = 0; }
+            return;
+        }
         var tables = document.querySelectorAll('.table-wrap table');
         for (var i = 0; i < tables.length; i++) {
             var t = tables[i], rows = t.rows;
@@ -18775,6 +18869,7 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
         mo.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
     }
     if (mqMobile.addEventListener) mqMobile.addEventListener('change', schedule);
+    window.mfStickyRefresh = function () { clearTimeout(tmr); tmr = setTimeout(function () { try { stickyPass(); } catch (e) {} }, 30); };
     window.addEventListener('load', function () {
         schedule();
         setTimeout(function () { try { if (NEED.test(getComputedStyle(document.body).fontFamily)) loadExtra(); } catch (e) {} }, 600);
