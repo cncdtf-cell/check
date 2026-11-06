@@ -17441,6 +17441,20 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
                 if (permission === 'default') {
                     permission = await Notification.requestPermission();
                     log('ইউজারের উত্তর: ' + permission);
+                    if (permission === 'default') {
+                        // ব্রাউজার বক্স দেখায়নি/উত্তর পায়নি — ব্রাউজার নিয়ম অনুযায়ী ইউজারের প্রথম ট্যাপ/ক্লিকে আবার চাওয়া হবে
+                        log('প্রথম ট্যাপ/ক্লিকে আবার অনুমতি চাওয়া হবে।');
+                        if (!window._pushTapArmed) {
+                            window._pushTapArmed = true;
+                            const onTap = () => {
+                                document.removeEventListener('pointerdown', onTap, true);
+                                window._pushTapArmed = false;
+                                initPushNotifications(uid);
+                            };
+                            document.addEventListener('pointerdown', onTap, true);
+                        }
+                        return;
+                    }
                 }
                 if (permission !== 'granted') {
                     warn('পারমিশন দেওয়া হয়নি (' + permission + ') — টোকেন সংগ্রহ বাদ দেওয়া হলো।');
