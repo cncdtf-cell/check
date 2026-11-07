@@ -2,6 +2,9 @@
 <html lang="bn">
 <head>
     <meta charset="UTF-8" />
+    <!-- 🔧 [v16.5.61] নোটিফিকেশন-ক্লিকে 404 ঠিক: পেজের ঠিকানা SW-কে জমা রাখে (firebase-messaging-sw.js v2 লাগবে)। -->
+    <!-- 🆕 [v16.5.60] ছবি আপলোডের পর কোন Drive ফোল্ডারে গেল তার নাম দেখায় (স্ক্রিপ্ট v16.5.31 লাগবে; ফোল্ডার-নির্বাচন সার্ভারে অ্যাডমিন-সেটিং অনুযায়ী)। -->
+    <!-- 🆕 [v16.5.59] চ্যাটে অ্যাডমিন প্যানেলের মতো একই আসল ইমোজি (আইকন-রূপান্তর বাদ); ছবি-আপলোড ফোল্ডার স্ক্রিপ্ট v16.5.29 অনুযায়ী মেনু-ভিত্তিক। -->
     <!-- 🆕 [v16.5.63] চ্যাট: গ্রুপ ও DM একই ডিজাইন/ইমোজি; মেসেঞ্জার-স্টাইল 'কে কোন মেসেজ পর্যন্ত দেখেছেন' (ছোট ছবি); চ্যাট-ডকে 📎 ছবি বাটন;   -->
     <!-- 🆕 [v16.5.56] বাগ-ফিক্স: ইউজার প্যানেলের টেবিলে প্রথম কলামের হেডার লেখা অস্পষ্ট (ধূসর) ও "নং"-এর সরু নিয়ম সব টেবিলে লাগা ("মাস" ভেঙে যাওয়া) ঠিক; মোবাইলের অটো-স্থির-প্রথম-কলাম এখন এডমিন-নিয়ন্ত্রিত (ডিফল্ট বন্ধ); এডমিনের টেবিল-নীতি (লেখা সাইজ/Wrap/ঘনত্ব/ডোরাকাটা/টুলবার লুকানো) প্রয়োগ। admin_v16_5_58-এর সাথে ব্যবহার করুন। -->
     <!-- 🆕 [v16.5.55] ডিটেলস মডালে এডমিনের কলাম-কনফিগের সাথে মিল: রিসিপ্ট নং কলাম যোগ (এডমিনের সেটিংসে দেখাবে/লুকাবে), ফ্রিজ নির্ভরযোগ্য (data-mf-tid)। admin_v16_5_57-এর সাথে ব্যবহার করুন। -->
@@ -5598,6 +5601,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             if (!json.success) throw new Error(json.error || 'আপলোড ব্যর্থ হয়েছে।');
             if (!json.directUrl) throw new Error('ছবি সেভ হয়েছে, কিন্তু লিংক ফেরত আসেনি — এডমিনকে জানান।');
             onProgress?.('done');
+            window.__mfUploadFolder = json.folder || '';   // 🆕 [v16.5.60] সার্ভার কোন ফোল্ডারে রেখেছে
             window.__mfUploadNote = json.note || '';   // 🆕 [v16.5.28] সার্ভারের সতর্কতা (যেমন ফোল্ডার তৈরি যায়নি)
             return json.directUrl;
         };
@@ -5680,7 +5684,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                     }, '', category);
                     urlInput.value = directUrl; justUploaded = directUrl; syncDel();
                     setPreview(directUrl);
-                    status.textContent = '✅ আপলোড সফল হয়েছে' + (window.__mfUploadNote ? ' — ⚠️ ' + window.__mfUploadNote : '');
+                    status.textContent = '✅ আপলোড সফল হয়েছে' + (window.__mfUploadFolder ? ' — 📁 ' + window.__mfUploadFolder : '') + (window.__mfUploadNote ? ' — ⚠️ ' + window.__mfUploadNote : '');
                     status.className = 'image-upload-status success';
                 } catch (err) {
                     console.error(err);
@@ -16016,6 +16020,7 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
         .cd-empty{text-align:center;padding:40px 10px;opacity:.7;font-size:14px}
         .cd-inp{display:flex;gap:8px;align-items:flex-end;padding:8px 10px calc(8px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--line,#e1dac6);background:var(--paper-raised,#fff);flex-shrink:0}
         .cd-inp textarea{flex:1;resize:none;border-radius:20px;padding:9px 14px;font:inherit;font-size:14.5px;max-height:110px;min-height:40px;box-sizing:border-box}
+        .cd-chip,.cd-pick button{font-family:"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif}
         .cd-att{width:42px;height:42px;border-radius:50%;border:1px solid var(--line,#e1dac6);background:var(--paper-raised,#fff);color:var(--emerald-700,#17513c);cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center}
         body.dark-mode .cd-att{color:var(--gold-300)}
         .cd-send{width:42px;height:42px;border-radius:50%;border:0;background:var(--emerald-700,#17513c);color:#fff;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center}
@@ -17434,6 +17439,8 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
 
                 log('সার্ভিস ওয়ার্কার রেজিস্টার করা হচ্ছে (/firebase-messaging-sw.js)...');
                 const registration = await navigator.serviceWorker.register('./firebase-messaging-sw.js');
+                // 🔧 [v16.5.68] নোটিফিকেশন-ক্লিকে 404 ঠিক করতে: এই পেজের আসল ঠিকানা SW-কে জানিয়ে রাখা (অ্যাপ বন্ধ থাকলে ক্লিকে ঠিক এই পেজই খুলবে)
+                try { const _c = await caches.open('mf-app'); await _c.put('pagePath', new Response(location.origin + location.pathname)); } catch (e) { }
                 log('✅ সার্ভিস ওয়ার্কার রেজিস্টার সফল।');
 
                 let permission = Notification.permission;
@@ -20148,6 +20155,7 @@ body.dark-mode button:disabled { opacity: .7; color: #cdb06a; }
       if (el.isContentEditable || (el.hasAttribute && el.hasAttribute('data-mfi-skip'))) return true;
       var c = el.classList;
       if (c && (c.contains('msg-text') || c.contains('mfi'))) return true; // চ্যাটের লেখা/আইকন নিজে বাদ
+      if (el.matches && el.matches('#cd-panel,.cd-tab-msgs,#dm-messages,#cd-msgs,.cd-pinbar,.cd-replybar,#dmx-pinbar,#dmx-replybar,.chat-messages')) return true; // 🆕 [v16.5.65] চ্যাটে সবখানে আসল ইমোজি — অ্যাডমিন/পার্সোনাল একই
     }
     return false;
   }
