@@ -2,6 +2,16 @@
 <html lang="bn">
 <head>
     <meta charset="UTF-8" />
+    <!-- 🔧 [v16.5.74] "রিসিপ্ট নং" কলাম সব মেনুতে (মাসিক, বার্ষিক, আমার অনুদান — মাসিক/বার্ষিক, সদস্য-বিবরণ); এডমিনের কলাম-সেটিংসে লুকানো/বাদ থাকলেও দেখায়। -->
+    <!-- 🔧 [v16.5.73] একাধিক মাস একসাথে দিলে গ্রুপ-চিহ্ন রাখা হয় (এডমিন প্যানেল নম্বর দেওয়ার সময় একই নম্বর ব্যবহার করে)। -->
+    <!-- 🔧 [v16.5.72] ধরন: "সাধারণ রিসিপ্ট" (মাসভিত্তিক বিবরণ-টেবিল ছাড়া) ও "সাধারণ রিসিপ্ট (এক পৃষ্ঠা)" (বিবরণ-টেবিলসহ)। -->
+    <!-- 🔧 [v16.5.71] রিসিপ্টের সাজ বাছাই (মানি-ফর্ম/ক্লাসিক + কী কী দেখাবে, পছন্দ মনে থাকে); একাধিক মাসে মাসভিত্তিক বিবরণ-টেবিল; বিবরণীতে মাসের নাম বাংলায় ঠিক। -->
+    <!-- 🔧 [v16.5.70] একাধিক মাসের ফান্ড একসাথে হলে একটি যৌথ "অনুদানের রিসিপ্ট" (মোট টাকা, বাবদে সব মাস); ডিফল্ট ধরন = সাধারণ রিসিপ্ট। -->
+    <!-- 🔧 [v16.5.69] পাঠানোর অবস্থা: টেবিলের "রিসিপ্ট নং" ঘরে "পাঠানো হয়েছে" + মাধ্যম / "পাঠানো হয়নি"। -->
+    <!-- 🔧 [v16.5.68] শেয়ার প্যানেলে রিসিপ্টের ধরন (সাধারণ/বিস্তারিত/মাসভিত্তিক/হিসাব-বিবরণী) ও ফরম্যাট (JPG/PDF) বাছাই; বার্তা এডিটযোগ্য। -->
+    <!-- 🔧 [v16.5.67] ফান্ড কনফার্মের পর শেয়ার প্যানেল: ইমেইল · হোয়াটসঅ্যাপ · মেসেঞ্জার · শেয়ার, রিসিপ্ট ছবিসহ, পাঠানো হলে ✓ টিক। -->
+    <!-- 🔧 [v16.5.66] লেবেল "কলাম সেটিংস" → "টেবিল সেটিংস" (শুধু নাম) -->
+    <!-- 🔧 [v16.5.65] মাসিক টেবিলে "রিসিপ্ট নং" কলাম যোগ — এডমিনের মাসিক টেবিলে ছিল কিন্তু ইউজার প্যানেলে কলামটাই ছিল না, তাই "গোপনীয়"-অনুমতি পেলেও দেখা যেত না। এডমিনের কলাম-সেটিং (লুকানো/গোপনীয়/ক্রম) আগের মতোই মানা হয়। -->
     <!-- 🔧 [v16.5.64] স্ক্রিপ্ট-URL পেজ আবার সামনে এলে নতুন করে পড়া (ইউজারকে রিলোড লাগে না)। -->
     <!-- 🔧 [v16.5.63] সেটিংসে আগে থেকে সংরক্ষিত স্ক্রিপ্ট-URL (script_url, না থাকলে AI-প্রক্সির URL) থেকেই সব প্যানেল URL নেয়; HTML-এ আলাদা করে লিখতে হয় না। -->
     <!-- 🆕 [v16.5.62] Apps Script URL সেটিংস-নিয়ন্ত্রিত (app_settings/script_url) — এডমিন বদলালে এই প্যানেলও নতুন URL ধরে। -->
@@ -6212,21 +6222,236 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
         };
         window.openMonthlyThanksEmailModal = openMonthlyThanksEmailModal;
 
-        // কনফার্ম-সফল হওয়ার পর যে ছোট মডালটা আসে — এখানেই "✉️ ইমেইল" বাটন
+        // 🆕 [v16.5.69] পাঠানোর অবস্থা — এডমিন প্যানেলের সাথে একই জায়গায় (settings.receiptNoMap.notified[entryId] = {via, vias, at}) জমা হয়
+        const _notVias = (nt) => (nt && Array.isArray(nt.vias) && nt.vias.length) ? nt.vias : String((nt && nt.via) || '').split(/\s*,\s*/).filter(Boolean);
+        window.mfNotifyAdd = (ids, via) => {
+            if (!state.settings) state.settings = {};
+            const m = state.settings.receiptNoMap = (state.settings.receiptNoMap && typeof state.settings.receiptNoMap === 'object') ? state.settings.receiptNoMap : {};
+            if (!m.notified || typeof m.notified !== 'object') m.notified = {};
+            (Array.isArray(ids) ? ids : [ids]).forEach(id => {
+                if (!id) return;
+                const old = _notVias(m.notified[id]), vs = old.indexOf(via) >= 0 ? old : old.concat([via]);
+                m.notified[id] = { via: vs.join(', '), vias: vs, at: new Date().toISOString() };
+            });
+            try { saveState(); } catch (e) { }
+            try { renderMain(); } catch (e) { }
+        };
+        window.mfRnoGroupEnd = (G, getIds) => {
+            const m = (state.settings && state.settings.receiptNoMap) || null;
+            const ids = (getIds ? getIds() : []).filter(id => !(m && m.assigned && m.assigned[id]));   // নম্বর এখনো-না-পাওয়া নতুন এন্ট্রিগুলোই গ্রুপ (নম্বর দেয় এডমিন প্যানেল)
+            if (ids.length < 2) return;
+            if (!state.settings) state.settings = {};
+            const mm = state.settings.receiptNoMap = (state.settings.receiptNoMap && typeof state.settings.receiptNoMap === 'object') ? state.settings.receiptNoMap : {};
+            if (!mm.grp || typeof mm.grp !== 'object') mm.grp = {};
+            ids.forEach((id, i) => { mm.grp[id] = { g: ids[0], i: i + 1, n: ids.length }; });
+            try { saveState(); } catch (e) { }
+        };
+        // 🆕 [v16.5.83] "১/৪" চিহ্ন — একাধিক মাসের একসাথে-দেওয়া টাকার একই রিসিপ্ট নম্বরের অংশ
+        window.mfGrpTag = (id) => { const g = id && state.settings && state.settings.receiptNoMap && state.settings.receiptNoMap.grp && state.settings.receiptNoMap.grp[id]; return (g && g.n > 1) ? (toBengaliNum(g.i) + '/' + toBengaliNum(g.n)) : ''; };
+        // 🆕 [v16.5.74] সব টেবিলের "রিসিপ্ট নং" ঘর — নম্বর + গ্রুপ-চিহ্ন (১/৪) + পাঠানো অবস্থা
+        window.mfRnoTd = (id, amount, cls, noSent) => {
+            const mp = (state.settings && state.settings.receiptNoMap && state.settings.receiptNoMap.assigned) || {};
+            const no = id ? (mp[id] || '') : '';
+            const tg = (no && window.mfGrpTag) ? window.mfGrpTag(id) : '';
+            return `<td class="${cls || 'muted'}">${no ? '<b>' + escapeHtml(no) + '</b>' : (Number(amount) > 0 ? '<span class="small muted" title="এডমিন প্যানেল চালু হলে নম্বর বসবে">নম্বর আসছে…</span>' : '—')}${(tg && noSent) ? ' <span class="small muted">' + tg + '</span>' : ''}${(!noSent && Number(amount) > 0 && id && window.mfSentHtml) ? window.mfSentHtml(id) : ''}</td>`;
+        };
+        window.mfSentHtml = (id) => {
+            const _tg = (window.mfGrpTag && window.mfGrpTag(id)) ? `<div class="small muted" style="white-space:nowrap;" title="একসাথে দেওয়া একাধিক মাসের টাকা — একই রিসিপ্ট নম্বর">অংশ ${window.mfGrpTag(id)}</div>` : '';
+            const nt = id && state.settings && state.settings.receiptNoMap && state.settings.receiptNoMap.notified && state.settings.receiptNoMap.notified[id];
+            return _tg + (nt ? `<div class="small" style="color:#1b5e20;white-space:nowrap;">✓ পাঠানো হয়েছে<div class="muted" style="font-size:11px;">${escapeHtml(_notVias(nt).join(', '))}</div></div>`
+                      : '<div class="small muted" style="white-space:nowrap;">পাঠানো হয়নি</div>');
+        };
+
+        // 🔧 [মাসিক সংগ্রহ কনফার্মের পর — শেয়ার প্যানেল] ইমেইল · হোয়াটসঅ্যাপ · মেসেঞ্জার · শেয়ার — বার্তা + (ঐচ্ছিক) রিসিপ্ট ছবিসহ।
+        // প্রতিটি মাধ্যমে পাঠানো/খোলা সফল হলে বাটনে ✓ টিক ওঠে। (ইমেইল/WhatsApp লিংক খোলা মানেই "পাঠানো" নিশ্চিত নয় — ব্রাউজার থেকে যাচাই করা যায় না; শেয়ার-শিটে বাতিল করলে টিক ওঠে না।)
+        // ছবি সংযুক্ত করতে ডিভাইসের শেয়ার-শিট (navigator.share + files) ব্যবহার হয়; সাপোর্ট না থাকলে ছবি ডাউনলোড + বার্তা কপি হয়।
         const openMonthlyConfirmedModal = (info) => {
             const m = memberById(info.memberId);
+            const tpl = buildMonthlyThanksEmail(info);
+            const sent = {};
+            let imgFile = null, imgState = 'idle', imgPromise = null;
+            const $q = id => document.getElementById(id);
+            const waNum = (() => {
+                let d = String((m && m.mobile) || '').replace(/[০-৯]/g, c => '০১২৩৪৫৬৭৮৯'.indexOf(c)).replace(/\D/g, '');
+                if (!d) return '';
+                if (d.indexOf('00') === 0) d = d.slice(2);
+                if (d.indexOf('880') === 0) return d;
+                if (d.charAt(0) === '0') return '88' + d;
+                if (d.length === 10) return '880' + d;
+                return d;
+            })();
+            const dataUrlToFile = (url, name) => {
+                const parts = String(url).split(','), bin = atob(parts[1]), u8 = new Uint8Array(bin.length);
+                for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+                return new File([u8], name, { type: 'image/jpeg' });
+            };
+            const selType = () => { const e = $q('mc-type'); return e ? e.value : 'simple'; };
+            const selFmt = () => { const e = $q('mc-fmt'); return e ? e.value : (_pref.fmt || 'jpg'); };
+            const PREF_KEY = 'mf_share_rcpt_v1';
+            const loadPref = () => { try { return JSON.parse(localStorage.getItem(PREF_KEY) || '{}') || {}; } catch (e) { return {}; } };
+            const savePref = () => { try { localStorage.setItem(PREF_KEY, JSON.stringify({ style: selStyle(), fmt: selFmt(), show: selShow() })); } catch (e) { } };
+            const _pref = loadPref();
+            const SHOW_KEYS = [['method', 'পরিশোধের মাধ্যম'], ['collector', 'সংগ্রাহক'], ['thanks', 'ধন্যবাদ-বাক্য'], ['contact', 'যোগাযোগ/ঠিকানা'], ['breakdown', 'মাসভিত্তিক বিবরণ (একাধিক মাসে)'], ['history', 'সাম্প্রতিক লেনদেন (বিস্তারিতে)'], ['total', 'সর্বমোট (বিস্তারিতে)']];
+            const selStyle = () => { const e = $q('mc-style'); return e ? e.value : (_pref.style || 'money'); };
+            const selShow = () => { const o = {}; SHOW_KEYS.forEach(k => { const c = $q('mc-sh-' + k[0]); o[k[0]] = c ? c.checked : (_pref.show && _pref.show[k[0]] !== undefined ? !!_pref.show[k[0]] : true); }); return o; };
+            const TYPE_LABEL = { simple: 'রিসিপ্ট', simple1: 'রিসিপ্ট', detailed: 'বিস্তারিত-রিসিপ্ট', monthly: 'মাসিক-রিসিপ্ট', statement: 'হিসাব-বিবরণী' };
+            const buildImg = async () => {
+                const rawType = selType(), fmt = selFmt(), type = rawType === 'simple1' ? 'simple' : rawType;
+                const _show = selShow(); if (rawType === 'simple') _show.breakdown = false; else if (rawType === 'simple1') _show.breakdown = true;
+                const all = [];
+                info.months.forEach(x => {
+                    const r = (state.monthly || []).find(y => y.memberId === info.memberId && y.month === x.key && Number(y.amount) > 0);
+                    if (r) all.push(r);
+                });
+                if (type !== 'statement' && !all.length) throw new Error('এই সংগ্রহের লেনদেন পাওয়া যায়নি');
+                // একাধিক মাস একসাথে দিলে: একটাই যৌথ রিসিপ্ট — মোট টাকা, বাবদে সব মাসের নাম। (নম্বর প্রথম মাসের লেনদেনের নম্বর)
+                const base0 = { kind: 'monthly', entry: all[0] || null };
+                let t = base0;
+                if (all.length > 1) {
+                    const sum = info.months.reduce((a, x) => a + (Number(x.amount) || 0), 0) || all.reduce((a, r) => a + (Number(r.amount) || 0), 0);
+                                        const labs = info.months.map(x => (typeof txnMonthLabel === 'function' ? txnMonthLabel(x.key) : '') || x.label);
+                    const lblShort = labs.length > 3 ? (labs[0] + ' থেকে ' + labs[labs.length - 1] + ' (' + toBengaliNum(labs.length) + ' মাস)') : labs.join(', ');
+                    t = { kind: 'monthly', entry: Object.assign({}, all[0], { amount: sum, __monthsLabel: lblShort, __ids: all.map(r => r.id), __breakdown: info.months.map((x, i) => ({ label: labs[i], amount: Number(x.amount) || 0 })) }) };
+                }
+                const sigWrap = (typeof withPdfSig === 'function' && typeof resolveSig === 'function') ? (fn => withPdfSig(resolveSig('', undefined), fn)) : (fn => fn());
+                if (type !== 'statement') { try { if (typeof issueRno === 'function') issueRno(base0); } catch (e) { } }
+                const base = sanitizeFileName((TYPE_LABEL[type] || 'রিসিপ্ট') + '-' + (m ? m.name : 'donor'));
+                if (fmt === 'pdf') {
+                    const b64 = await sigWrap(() => generatePdfForType(type, m, t, _show, selStyle()));
+                    const bin = atob(b64), u8 = new Uint8Array(bin.length);
+                    for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+                    return new File([u8], base + '.pdf', { type: 'application/pdf' });
+                }
+                const url = await sigWrap(() => generateJpgForType(type, m, t, _show, selStyle()));
+                return dataUrlToFile(url, base + '.jpg');
+            };
+            let imgTok = 0;
+            const startImg = () => {
+                if (imgState !== 'idle' && imgState !== 'error') return;
+                imgState = 'loading'; imgFile = null; setImgSt();
+                const tok = ++imgTok;
+                imgPromise = buildImg().then(f => { if (tok === imgTok) { imgFile = f; imgState = 'ready'; setImgSt(); } return f; })
+                    .catch(e => { console.error(e); if (tok === imgTok) { imgState = 'error'; setImgSt(); } return null; });
+            };
+            const setImgSt = () => {
+                const el = $q('mc-img-st'); if (!el) return;
+                const on = $q('mc-img') && $q('mc-img').checked;
+                el.textContent = !on ? '' : imgState === 'loading' ? '⏳ রিসিপ্ট তৈরি হচ্ছে…' : imgState === 'ready' ? '✅ রিসিপ্ট তৈরি' : imgState === 'error' ? '⚠️ রিসিপ্ট তৈরি হয়নি — শুধু বার্তা যাবে' : '';
+            };
+            const download = f => { const u = URL.createObjectURL(f), a = document.createElement('a'); a.href = u; a.download = f.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 4000); };
+            const copyText = async (s) => { try { await navigator.clipboard.writeText(s); return true; } catch (e) { const ta = $q('mc-msg'); try { ta.focus(); ta.select(); return document.execCommand('copy'); } catch (e2) { return false; } } };
+            const openUrl = u => { const w = window.open(u, '_blank', 'noopener'); if (!w) window.location.href = u; };
+            const mark = (ch, label) => {
+                sent[ch] = (sent[ch] || 0) + 1;
+                const b = document.querySelector('[data-mc-ch="' + ch + '"]');
+                if (b) { b.style.background = '#e7f6ec'; b.style.borderColor = '#2e7d32'; b.style.color = '#1b5e20'; const t = b.querySelector('.mc-tick'); if (t) t.textContent = ' ✓ পাঠানো হয়েছে'; }
+                toast('✓ ' + label + ' — পাঠানো হয়েছে');
+                try { const ids = info.months.map(x => ((state.monthly || []).find(r => r.memberId === info.memberId && r.month === x.key && Number(r.amount) > 0) || {}).id).filter(Boolean); window.mfNotifyAdd(ids, ({ email: 'ইমেইল', whatsapp: 'হোয়াটসঅ্যাপ', messenger: 'মেসেঞ্জার', share: 'শেয়ার' })[ch] || label); } catch (e) { }
+                try { addActivityLog('email', 'monthly', info.memberId, label + '-এ ধন্যবাদ-বার্তা পাঠানো হয়েছে' + ((imgFile && $q('mc-img').checked) ? ' (রিসিপ্টসহ)' : ''), { channel: ch }); } catch (e) { }
+            };
+            // শেয়ার-শিট: true = পাঠানো হয়েছে, false = ব্যবহারকারী বাতিল করেছেন, null = ডিভাইসে সাপোর্ট নেই
+            const nativeShare = async (withImg) => {
+                const data = { text: $q('mc-msg').value, title: tpl.subject };
+                if (withImg && imgFile) {
+                    if (!(navigator.canShare && navigator.canShare({ files: [imgFile] }))) return null;
+                    data.files = [imgFile];
+                }
+                if (!navigator.share) return null;
+                try { await navigator.share(data); return true; }
+                catch (e) { if (e && e.name === 'AbortError') return false; return null; }
+            };
+            const fallbackCopy = async (withImg) => {
+                const ok = await copyText($q('mc-msg').value);
+                if (withImg && imgFile) download(imgFile);
+                toast((ok ? '📋 বার্তা কপি হয়েছে' : 'বার্তা বক্স থেকে কপি করুন') + (withImg && imgFile ? '; ফাইল ডাউনলোড হয়েছে — চ্যাটে জুড়ে দিন' : ''));
+            };
+            const handlers = {
+                email: async () => {
+                    if (!tpl.to) { toast('এই সদস্যের ইমেইল ঠিকানা যোগ করা নেই'); return; }
+                    const url = 'mailto:' + encodeURIComponent(tpl.to) + '?subject=' + encodeURIComponent(tpl.subject) + '&body=' + encodeURIComponent($q('mc-msg').value);
+                    window.location.href = url;
+                    if (imgFile && $q('mc-img').checked) toast('ইমেইলে রিসিপ্ট জুড়তে "⬇️ ফাইল ডাউনলোড" চেপে সংযুক্ত করুন');
+                    mark('email', 'ইমেইল');
+                },
+                whatsapp: async () => {
+                    const withImg = $q('mc-img').checked && !!imgFile;
+                    if (withImg) {
+                        const r = await nativeShare(true);
+                        if (r === true) { mark('whatsapp', 'হোয়াটসঅ্যাপ'); return; }
+                        if (r === false) return;
+                        await fallbackCopy(true);
+                    }
+                    openUrl('https://wa.me/' + waNum + '?text=' + encodeURIComponent($q('mc-msg').value));
+                    mark('whatsapp', 'হোয়াটসঅ্যাপ');
+                },
+                messenger: async () => {
+                    const withImg = $q('mc-img').checked && !!imgFile;
+                    const r = await nativeShare(withImg);
+                    if (r === true) { mark('messenger', 'মেসেঞ্জার'); return; }
+                    if (r === false) return;
+                    await fallbackCopy(withImg);
+                    openUrl('https://www.messenger.com/');
+                    mark('messenger', 'মেসেঞ্জার');
+                },
+                share: async () => {
+                    const withImg = $q('mc-img').checked && !!imgFile;
+                    const r = await nativeShare(withImg);
+                    if (r === true) { mark('share', 'শেয়ার'); return; }
+                    if (r === false) return;
+                    await fallbackCopy(withImg);
+                    mark('share', 'শেয়ার');
+                }
+            };
+            const chBtn = (ch, ic, label, extra) => `<button type="button" class="btn btn-outline" data-mc-ch="${ch}" style="justify-content:flex-start;gap:6px;text-align:left;"${extra || ''}>${ic} ${label}<span class="mc-tick small" style="margin-left:auto;font-weight:600;"></span></button>`;
             openModal(`
                 <h3>✅ মাসিক চাঁদা সংরক্ষণ হয়েছে</h3>
                 <p style="margin:8px 0 4px;"><strong>${escapeHtml(m ? m.name : '')}</strong> — ${escapeHtml(info.months.map(x => x.label).join(', '))}</p>
-                <p style="margin:0 0 12px;">মোট গৃহীত: <strong>${fmtMoney(info.received)}</strong></p>
-                <p class="small muted" style="margin:0 0 6px;">চাইলে দাতাকে ধন্যবাদ জানিয়ে একটি ইমেইল পাঠাতে পারেন।</p>
-                <div class="modal-actions" style="flex-wrap:wrap;gap:8px;">
+                <p style="margin:0 0 10px;">মোট গৃহীত: <strong>${fmtMoney(info.received)}</strong></p>
+                <div class="field"><label class="small muted">ধন্যবাদ-বার্তা (চাইলে এডিট করুন)</label><textarea id="mc-msg" rows="8">${escapeHtml(tpl.body)}</textarea></div>
+                <label style="display:flex;gap:8px;align-items:center;margin:4px 0 6px;"><input type="checkbox" id="mc-img" checked> 🧾 রিসিপ্টসহ পাঠান <span id="mc-img-st" class="small muted"></span></label>
+                <div style="display:flex;gap:8px;margin-bottom:10px;">
+                  <select id="mc-type" style="flex:2;min-width:0;">
+                    <option value="simple" selected>সাধারণ রিসিপ্ট</option>
+                    <option value="simple1">সাধারণ রিসিপ্ট (এক পৃষ্ঠা)</option>
+                    <option value="detailed">বিস্তারিত রিসিপ্ট</option>
+                    <option value="monthly">মাসভিত্তিক হিসাবসহ রিসিপ্ট</option>
+                    <option value="statement">হিসাব-বিবরণী (সব লেনদেন)</option>
+                  </select>
+                  <select id="mc-fmt" style="flex:1;min-width:0;"><option value="jpg"${_pref.fmt === 'pdf' ? '' : ' selected'}>🖼️ JPG</option><option value="pdf"${_pref.fmt === 'pdf' ? ' selected' : ''}>📄 PDF</option></select>
+                </div>
+                <details style="margin:-2px 0 10px;"><summary class="small" style="cursor:pointer;">⚙️ রিসিপ্টের সাজ ও কী কী দেখাবে</summary>
+                  <div style="margin-top:6px;">
+                    <select id="mc-style" style="width:100%;margin-bottom:6px;"><option value="money"${_pref.style === 'classic' ? '' : ' selected'}>মানি-রিসিপ্ট ফর্ম (দাতার কপি)</option><option value="classic"${_pref.style === 'classic' ? ' selected' : ''}>ক্লাসিক (সাদামাটা)</option></select>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;">${SHOW_KEYS.map(k => `<label class="small" style="display:flex;gap:4px;align-items:center;"><input type="checkbox" id="mc-sh-${k[0]}"${(_pref.show && _pref.show[k[0]] === false) ? '' : ' checked'}> ${k[1]}</label>`).join('')}</div>
+                  </div></details>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                  ${chBtn('email', '✉️', 'ইমেইল', tpl.to ? '' : ' title="ইমেইল ঠিকানা নেই"')}
+                  ${chBtn('whatsapp', '💬', 'হোয়াটসঅ্যাপ')}
+                  ${chBtn('messenger', '📨', 'মেসেঞ্জার')}
+                  ${chBtn('share', '📤', 'শেয়ার')}
+                </div>
+                <div class="small muted" style="margin-top:8px;">${info.months.length > 1 ? 'একাধিক মাস একসাথে দেওয়ায় সব মাসের জন্য একটি যৌথ রিসিপ্ট (মোট টাকাসহ) যাবে। ' : ''}রিসিপ্টসহ পাঠাতে ফোনের শেয়ার-মেনু খুলবে — সেখান থেকে অ্যাপ বেছে নিন। পাঠানো হলে বাটনে ✓ উঠবে।</div>
+                <div class="modal-actions" style="flex-wrap:wrap;gap:8px;margin-top:10px;">
                   <button class="btn btn-outline" id="mc-close">বন্ধ করুন</button>
-                  <button class="btn btn-primary" id="mc-email">✉️ ইমেইল</button>
+                  <button class="btn btn-outline" id="mc-dl">⬇️ ফাইল ডাউনলোড</button>
                 </div>
             `, () => {
-                document.getElementById('mc-close').onclick = closeModal;
-                document.getElementById('mc-email').onclick = () => openMonthlyThanksEmailModal(info);
+                $q('mc-close').onclick = closeModal;
+                $q('mc-img').addEventListener('change', () => { if ($q('mc-img').checked) startImg(); setImgSt(); });
+                ['mc-type', 'mc-fmt', 'mc-style'].concat(SHOW_KEYS.map(k => 'mc-sh-' + k[0])).forEach(id => $q(id).addEventListener('change', () => { savePref(); imgState = 'idle'; if ($q('mc-img').checked) startImg(); else setImgSt(); }));
+                $q('mc-dl').onclick = async () => {
+                    if (imgState === 'idle' || imgState === 'error') startImg();
+                    const f = await imgPromise; if (f) download(f); else toast('রিসিপ্ট তৈরি করা যায়নি');
+                };
+                document.querySelectorAll('[data-mc-ch]').forEach(b => {
+                    b.onclick = async () => {
+                        const ch = b.getAttribute('data-mc-ch');
+                        if ($q('mc-img').checked && imgState === 'loading') { toast('⏳ রিসিপ্ট তৈরি হচ্ছে — একটু অপেক্ষা করে আবার চাপুন'); return; }
+                        if ($q('mc-img').checked && (imgState === 'idle' || imgState === 'error')) { startImg(); toast('⏳ রিসিপ্ট তৈরি হচ্ছে — একটু অপেক্ষা করে আবার চাপুন'); return; }
+                        try { await handlers[ch](); } catch (e) { console.error(e); toast('পাঠানো যায়নি: ' + ((e && e.message) || '')); }
+                    };
+                });
+                startImg();
             });
         };
 
@@ -6307,6 +6532,9 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                 const method = document.getElementById('smc-method').value;
                 const collector = document.getElementById('smc-collector').value;
                 const monthlyAmt = getMemberMonthlyAmount(m);
+                // 🆕 [v16.5.83] একাধিক মাস একসাথে দিলে — সবগুলো এন্ট্রি একই রিসিপ্ট নম্বর পাবে (মাসভিত্তিক টাকা আলাদা থাকে)
+                const _rg = window.mfRnoGroupBegin ? window.mfRnoGroupBegin() : null;
+                try {
                 result.perMonth.forEach(r => {
                     if (r.allocated <= 0 && r.already <= 0) return; // অপরিবর্তিত (বকেয়া, ০ টাকা) মাস touch করা হবে না
                     upsertMonthly(m.id, r.key, 'amount', r.newTotal);
@@ -6318,6 +6546,9 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                         upsertMonthly(m.id, r.key, 'status', r.status);
                     }
                 });
+                } finally {
+                    try { if (window.mfRnoGroupEnd) window.mfRnoGroupEnd(_rg, () => result.perMonth.filter(r => r.allocated > 0).map(r => (getMonthlyEntry(m.id, r.key) || {}).id).filter(Boolean)); } catch (e) { console.error(e); }
+                }
                 // 🆕 [Rule 3 — কোনো টাকা হারানো যাবে না] বিদ্যমান অগ্রিম এই লেনদেনে ব্যবহার করা হলে
                 // (useAdvance=true) সেটা effectiveReceived-এ যোগ হয়েই গণনা হয়েছে, তাই নতুন
                 // result.advance-ই সদস্যের নতুন সম্পূর্ণ ব্যালেন্স। কিন্তু ব্যবহার না করলে
@@ -6507,7 +6738,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             const ncol = cfg.showDate ? 3 : 2;
             const dateTd = (r) => cfg.showDate ? `<td style="${cellStyle}">${fmtDate(r.date)}</td>` : '';
             const rowsHtml = [
-                ...monthlyRows.map(r => `<tr><td style="${cellStyle}">মাসিক — ${escapeHtml(r.month || '')}</td>${dateTd(r)}<td class="num" style="${cellStyle}">${fmtMoney(r.amount)}</td></tr>`),
+                ...monthlyRows.map(r => `<tr><td style="${cellStyle}">মাসিক — ${escapeHtml((typeof txnMonthLabel === 'function' ? txnMonthLabel(r.month) : r.month) || r.month || '')}</td>${dateTd(r)}<td class="num" style="${cellStyle}">${fmtMoney(r.amount)}</td></tr>`),
                 ...yearlyRows.map(r => `<tr><td style="${cellStyle}">বার্ষিক</td>${dateTd(r)}<td class="num" style="${cellStyle}">${fmtMoney(r.amount)}</td></tr>`)
             ].join('');
             const fs = cfg.fontSize;
@@ -6721,9 +6952,9 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             const th = (v, x) => `<th style="text-align:left;border-bottom:1px solid #ccc;padding:6px 8px;${cell}${x || ''}">${v}</th>`;
             const kv = (label, val) => (val === undefined || val === null || val === '') ? '' : `<tr>${td(escapeHtml(label), 'color:#6b6350;width:' + cfg.tableStyle.kvWidth + '%;')}${td('<strong>' + escapeHtml(val) + '</strong>')}</tr>`;
             const tbl = (inner) => `<table style="width:100%;border-collapse:collapse;margin-bottom:14px;table-layout:auto;font-size:${fs}px !important;">${inner}</table>`;
-            const monthLabel = isMonthly ? txnMonthLabel(e.month) : '';
+            const monthLabel = isMonthly ? (e.__monthsLabel || txnMonthLabel(e.month)) : '';
             const kindLabel = isMonthly ? 'মাসিক অনুদান' + (monthLabel ? ' — ' + monthLabel : '') : 'বার্ষিক/এককালীন অনুদান';
-            const same = (x) => x === e || (x && e && x.id && x.id === e.id);
+            const same = (x) => x === e || (x && e && x.id && (x.id === e.id || (e.__ids && e.__ids.indexOf(x.id) >= 0)));
             const hl = 'background:rgba(0,0,0,0.06);font-weight:700;';
             const sec = (title) => `<div style="font-weight:700;margin:14px 0 6px;font-size:${fs}px;">${escapeHtml(title)}</div>`;
 
@@ -6736,6 +6967,12 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             body += `<div class="pill active" style="font-size:${fs + 2}px;padding:10px 18px;display:inline-block;margin:4px 0 12px;">${escapeHtml(cfg.labelAmount)}: ${fmtMoney(e.amount)}</div>`;
 
             let extras = '';
+            // 🆕 [v16.5.81] একাধিক মাস একসাথে দিলে: মাসভিত্তিক বিবরণ-টেবিল (মাস | টাকা) + মোট — পেশাদার যৌথ রিসিপ্ট
+            if (e.__breakdown && e.__breakdown.length > 1 && show.breakdown !== false) {
+                extras += sec('মাসভিত্তিক বিবরণ') + tbl(
+                    e.__breakdown.map(b => kv(b.label, fmtMoney(b.amount))).join('') +
+                    `<tr>${td('<strong>মোট</strong>', 'color:#222;')}${td('<strong>' + escapeHtml(fmtMoney(e.amount)) + '</strong>')}</tr>`);
+            }
             if (type === 'detailed') {
                 const mSum = state.monthly.filter(r => r.memberId === m.id).reduce((a, r) => a + (Number(r.amount) || 0), 0);
                 const ySum = state.yearly.filter(r => r.memberId === m.id).reduce((a, r) => a + (Number(r.amount) || 0), 0);
@@ -9000,7 +9237,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
         // হয় না) — যাতে কোনো caller ভুলে গেলেও গেটিং নিশ্চিত থাকে।
         const columnSettingsButtonHtml = (tableId) => {
             if (!_editModeFeatureOn()) return '';
-            return `<button class="btn btn-outline btn-sm no-print" id="btn-col-settings-${tableId}" title="কলাম দেখাও/লুকাও, সাজাও, নাম বদলাও">⚙️ কলাম সেটিংস</button>`;
+            return `<button class="btn btn-outline btn-sm no-print" id="btn-col-settings-${tableId}" title="কলাম দেখাও/লুকাও, সাজাও, নাম বদলাও">⚙️ টেবিল সেটিংস</button>`;
         };
 
         // 🆕 [সরলীকরণ ধাপ ১] এডমিন প্যানেলের প্যাটার্নের সাথে সামঞ্জস্যপূর্ণ — প্রাইমারি
@@ -9022,7 +9259,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             const config = getColumnConfig(tableId, defaultColumns);
             const rows = [...config.columns].sort((a, b) => a.order - b.order);
             return `
-            <h3>⚙️ কলাম সেটিংস</h3>
+            <h3>⚙️ টেবিল সেটিংস</h3>
             <p class="muted small" style="margin:4px 0 14px;">কোন কলাম দেখাবেন, তাদের ক্রম, প্রস্থ ও নাম এখান থেকে ঠিক করুন।</p>
             <div class="col-settings-list" style="display:flex;flex-direction:column;gap:8px;max-height:52vh;overflow-y:auto;padding-right:4px;">
               ${rows.map(_columnSettingsRowHtml).join('')}
@@ -9142,7 +9379,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             closeModal();
             if (typeof onSaved === 'function') onSaved();
             else if (typeof window.renderMain === 'function') window.renderMain();
-            toast('✅ কলাম সেটিংস সংরক্ষণ করা হয়েছে');
+            toast('✅ টেবিল সেটিংস সংরক্ষণ করা হয়েছে');
         };
         window.saveColumnSettingsFromModal = saveColumnSettingsFromModal;
 
@@ -9639,6 +9876,10 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             const _vk = [...config.columns].sort((a, b) => a.order - b.order)
                 .filter(c => (c.visible || getGlobalColFlags(tableId, c.key).showToUsers) && _isColumnAllowedForCurrentUser(tableId, c.key))   // 🆕 [v16.5.54] এডমিন নিজে লুকালেও "ইউজারে সবসময় দেখাবে" থাকলে দেখায়
                 .map(c => c.key);
+            // 🔧 [v16.5.74] "রিসিপ্ট নং" সব মেনুতেই থাকতে হবে — কলাম-কনফিগ/ভিজিবিলিটি যাই হোক, ডিফল্টে থাকলে এখানে জোর করে যোগ (মেথডের পরে)
+            if (Array.isArray(defaultColumns) && defaultColumns.some(c => c.key === 'rno') && _vk.indexOf('rno') < 0) {
+                const _mi = _vk.indexOf('method'); _vk.splice(_mi >= 0 ? _mi + 1 : _vk.length, 0, 'rno');
+            }
             (window.__mfColKeys = window.__mfColKeys || {})[tableId] = _vk; // 🔧 [ধাপ ৩] ফ্রিজ-ইঞ্জিনের জন্য
             return _vk;
         };
@@ -10679,12 +10920,14 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                 date: { label: 'তারিখ', thClass: 'date-cell', td: (r) => `<td class="date-cell">${r.date ? fmtDate(r.date) : '—'}</td>` },
                 amount: { label: 'পরিমাণ', thClass: 'num', td: (r) => `<td class="num">${fmtMoney(r.amount)}</td>` },
                 method: { label: 'মেথড', td: (r) => `<td class="muted">${escapeHtml(r.method || '—')}</td>` },
+                rno: { label: 'রিসিপ্ট নং', td: (r) => window.mfRnoTd(r.id, r.amount, 'muted', true) },
                 collector: { label: 'সংগ্রাহক', td: (r) => `<td class="muted">${escapeHtml(r.collector || '—')}</td>` }
             };
             const _mdYearlyCells = {
                 date: { label: 'তারিখ', thClass: 'date-cell', td: (r) => `<td class="date-cell">${fmtDate(r.date)}</td>` },
                 amount: { label: 'পরিমাণ', thClass: 'num', td: (r) => `<td class="num">${fmtMoney(r.amount)}</td>` },
                 method: { label: 'মেথড', td: (r) => `<td class="muted">${escapeHtml(r.method || '—')}</td>` },
+                rno: { label: 'রিসিপ্ট নং', td: (r) => window.mfRnoTd(r.id, r.amount, 'muted', true) },
                 // 🆕 বার্ষিক/এককালীন অনুদানেও "সংগ্রাহক" কলাম যোগ করা হলো (আগে ছিল না)
                 collector: { label: 'সংগ্রাহক', td: (r) => `<td class="muted">${escapeHtml(r.collector || '—')}</td>` },
                 remarks: { label: 'মন্তব্য', td: (r) => `<td class="muted small">${escapeHtml(r.remarks || '—')}</td>` }
@@ -10746,6 +10989,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
         window.MY_DONATIONS_MONTHLY_DEFAULT_COLUMNS = [
             { key: 'month', label: 'মাস', width: 400 }, { key: 'date', label: 'তারিখ', width: 100 },
             { key: 'amount', label: 'পরিমাণ', width: 80 }, { key: 'method', label: 'মেথড', width: 80 },
+            { key: 'rno', label: 'রিসিপ্ট নং', width: 150 },
             { key: 'collector', label: 'সংগ্রাহক', width: 200 }
         ];
         // 🆕 মাসিক টেবিলের সাথে সামঞ্জস্যপূর্ণ প্রস্থ (তারিখ/পরিমাণ/মেথড/সংগ্রাহক অভিন্ন),
@@ -10753,7 +10997,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
         // তাই একটু বেশি জায়গা রাখা হলো।
         window.MY_DONATIONS_YEARLY_DEFAULT_COLUMNS = [
             { key: 'date', label: 'তারিখ', width: 100 }, { key: 'amount', label: 'পরিমাণ', width: 80 },
-            { key: 'method', label: 'মেথড', width: 80 }, { key: 'collector', label: 'সংগ্রাহক', width: 200 },
+            { key: 'method', label: 'মেথড', width: 80 }, { key: 'rno', label: 'রিসিপ্ট নং', width: 150 }, { key: 'collector', label: 'সংগ্রাহক', width: 200 },
             { key: 'remarks', label: 'মন্তব্য', width: 220 }
         ];
         // 🆕 "🎁 আমার অনুদান" ট্যাবের কলাম-সেটিংস বাটন ও রিসাইজ-হ্যান্ডেল ওয়্যারিং
@@ -13295,14 +13539,14 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             amount: { label: 'পরিমাণ', thClass: 'num', td: (r) => `<td class="num">${fmtMoney(r.amount)}</td>` },
             method: { label: 'মেথড', td: (r) => `<td class="muted">${escapeHtml(r.method)}</td>` },
             collector: { label: 'সংগ্রাহক', td: (r) => `<td class="muted">${escapeHtml(r.collector)}</td>` },
-            rno: { label: 'রিসিপ্ট নং', td: (r) => { const mp = (state.settings && state.settings.receiptNoMap && state.settings.receiptNoMap.assigned) || {}; return `<td class="muted">${escapeHtml(mp[r.id] || '—')}</td>`; } }
+            rno: { label: 'রিসিপ্ট নং', td: (r) => { const mp = (state.settings && state.settings.receiptNoMap && state.settings.receiptNoMap.assigned) || {}; return `<td class="muted">${escapeHtml(mp[r.id] || '—')}${(Number(r.amount) > 0 && window.mfSentHtml) ? window.mfSentHtml(r.id) : ''}</td>`; } }
         };
         const _mdCellsYearly = {
             date: { label: 'তারিখ', td: (r) => `<td>${fmtDate(r.date)}</td>` },
             amount: { label: 'পরিমাণ', thClass: 'num', td: (r) => `<td class="num">${fmtMoney(r.amount)}</td>` },
             method: { label: 'মেথড', td: (r) => `<td class="muted">${escapeHtml(r.method)}</td>` },
             collector: { label: 'সংগ্রাহক', td: (r) => `<td class="muted">${escapeHtml(r.collector)}</td>` },
-            rno: { label: 'রিসিপ্ট নং', td: (r) => { const mp = (state.settings && state.settings.receiptNoMap && state.settings.receiptNoMap.assigned) || {}; return `<td class="muted">${escapeHtml(mp[r.id] || '—')}</td>`; } },
+            rno: { label: 'রিসিপ্ট নং', td: (r) => { const mp = (state.settings && state.settings.receiptNoMap && state.settings.receiptNoMap.assigned) || {}; return `<td class="muted">${escapeHtml(mp[r.id] || '—')}${(Number(r.amount) > 0 && window.mfSentHtml) ? window.mfSentHtml(r.id) : ''}</td>`; } },
             remarks: { label: 'মন্তব্য', td: (r) => `<td class="muted small">${escapeHtml(r.remarks)}</td>` }
         };
         const memberDetailsSubTableHtml = (cellDefs, rows) => {
@@ -13527,7 +13771,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                     const m = memberById(r.memberId);
                     return { memberId: r.memberId, idNumber: m ? m.idNumber : '', email: m ? m.email : '', imageUrl: m ? m.imageUrl : '',
                         name: m ? m.name : 'অজানা', father: m ? m.father : '', mobile: m ? m.mobile : '',
-                        amount: r.amount, month: r.month, date: r.date, method: r.method, collector: r.collector };
+                        amount: r.amount, month: r.month, date: r.date, method: r.method, collector: r.collector, entryId: r.id };
                 });
             } else {
                 let fm = activeMembers.filter(m => memberMatches(m, monthlySearch));
@@ -13550,7 +13794,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                         amount: entry && entry.amount ? entry.amount : null, month: null,
                         date: entry && entry.date ? entry.date : null,
                         method: entry && entry.method ? entry.method : null,
-                        collector: entry && entry.collector ? entry.collector : null };
+                        collector: entry && entry.collector ? entry.collector : null, entryId: entry ? entry.id : null };
                 });
             }
 
@@ -13567,6 +13811,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                 month: { label: 'মাস', td: (r) => `<td>${escapeHtml(r.month || '—')}</td>` },
                 date: { label: 'তারিখ', thClass: 'date-cell', td: (r) => `<td class="date-cell">${r.date ? fmtDate(r.date) : '—'}</td>` },
                 method: { label: 'মেথড', td: (r) => `<td class="muted small">${r.method ? escapeHtml(r.method) : '—'}</td>` },
+                rno: { label: 'রিসিপ্ট নং', td: (r) => { const mp = (state.settings && state.settings.receiptNoMap && state.settings.receiptNoMap.assigned) || {}; return `<td class="muted small">${escapeHtml((r.entryId && mp[r.entryId]) || '—')}${(r.entryId && window.mfSentHtml) ? window.mfSentHtml(r.entryId) : ''}</td>`; } },   // 🔧 [v16.5.65]
                 collector: { label: 'সংগ্রাহক', td: (r) => `<td class="muted small">${r.collector ? escapeHtml(r.collector) : '—'}</td>` },
                 actions: { label: 'কার্যক্রম', thClass: 'no-print act-col', td: (r) => `<td class="no-print act-col">${r.memberId ? detailsBtnHtml(r.memberId) + permEmailBtn(r.memberId, 'monthly', r.month) : '—'}</td>` }
             };
@@ -13639,6 +13884,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             { key: 'name', label: 'নাম' }, { key: 'father', label: 'পিতা/স্বামী' },
             { key: 'mobile', label: 'মোবাইল' }, { key: 'email', label: 'ইমেইল' }, { key: 'amount', label: 'পরিমাণ' }, { key: 'month', label: 'মাস' },
             { key: 'date', label: 'তারিখ', width: 150 }, { key: 'method', label: 'মেথড', width: 160 },
+            { key: 'rno', label: 'রিসিপ্ট নং', width: 150, after: 'method' },   // 🔧 [v16.5.65] এডমিনের মাসিক টেবিলে থাকা কলাম — আগে এখানে ছিলই না, তাই অনুমতি-পাওয়া ইউজারও দেখতেন না
             { key: 'collector', label: 'সংগ্রাহক', width: 180 }, { key: 'actions', label: 'কার্যক্রম' }
         ];
 
@@ -14016,6 +14262,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                 mobile: { label: 'মোবাইল', td: (r) => { const m = memberById(r.memberId); return `<td class="muted small">${m ? mobileLink(m.mobile) : ''}</td>`; } },
                 amount: { label: 'পরিমাণ', thClass: 'num', td: (r) => `<td class="num">${fmtMoney(r.amount)}</td>` },
                 method: { label: 'মেথড', td: (r) => `<td class="muted small">${escapeHtml(r.method)}</td>` },
+                rno: { label: 'রিসিপ্ট নং', td: (r) => window.mfRnoTd(r.id, r.amount, 'muted small') },
                 collector: { label: 'সংগ্রাহক', td: (r) => `<td class="muted small">${escapeHtml(r.collector)}</td>` },
                 remarks: { label: 'মন্তব্য', td: (r) => `<td class="muted small">${escapeHtml(r.remarks)}</td>` },
                 actions: { label: 'কার্যক্রম', thClass: 'no-print act-col', td: (r) => `<td class="no-print act-col">${r.memberId ? detailsBtnHtml(r.memberId) + permEmailBtn(r.memberId) : '—'}</td>` }
@@ -14040,7 +14287,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
         window.YEARLY_DEFAULT_COLUMNS = [
             { key: 'no', label: 'নং' }, { key: 'date', label: 'তারিখ' }, { key: 'name', label: 'নাম' },
             { key: 'father', label: 'পিতা/স্বামী' }, { key: 'mobile', label: 'মোবাইল' },
-            { key: 'amount', label: 'পরিমাণ' }, { key: 'method', label: 'মেথড' },
+            { key: 'amount', label: 'পরিমাণ' }, { key: 'method', label: 'মেথড' }, { key: 'rno', label: 'রিসিপ্ট নং' },
             { key: 'collector', label: 'সংগ্রাহক' }, { key: 'remarks', label: 'মন্তব্য' },
             { key: 'actions', label: 'কার্যক্রম' }
         ];
@@ -14303,7 +14550,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                       <span class="n-date">${dateStr}</span>
                     </div>
                     <div class="notice-body">
-                      ${n.imageUrl ? `<div class="n-image"><img src="${escapeHtml(toDirectImageUrl(n.imageUrl))}" alt="নোটিশের ছবি" data-preview-image="${escapeHtml(n.imageUrl)}" style="cursor:zoom-in;max-width:100%;border-radius:8px;margin-bottom:10px;" title="বড় করে দেখতে ক্লিক করুন"><div class="no-print" style="margin:-4px 0 10px;"><button type="button" class="btn btn-outline btn-sm" data-dl-image="${escapeHtml(n.imageUrl)}" data-dl-name="${escapeHtml(n.title || 'ছবি')}" title="ছবিটি ডাউনলোড করুন">⬇️ ছবি ডাউনলোড</button></div></div>` : ''}
+                      ${n.imageUrl ? `<div class="n-image"><img src="${escapeHtml(toDirectImageUrl(n.imageUrl))}" alt="নোটিশের ছবি" data-preview-image="${escapeHtml(n.imageUrl)}" style="cursor:zoom-in;max-width:100%;border-radius:8px;margin-bottom:10px;" title="বড় করে দেখতে ক্লিক করুন"><div class="no-print" style="margin:-4px 0 10px;"><button type="button" class="btn btn-outline btn-sm" data-dl-image="${escapeHtml(n.imageUrl)}" data-dl-name="${escapeHtml(n.title || 'ছবি')}" title="ছবিটি ডাউনলোড করুন">⬇️ ফাইল ডাউনলোড</button></div></div>` : ''}
                       ${n.content ? `<div class="n-content">${escapeHtml(n.content)}</div>` : ''}
                       <div class="n-meta"><span>${dateStr ? '📅 ' + dateStr : ''}</span><span class="n-idx">#${idx + 1}</span></div>
                     </div>
@@ -14380,7 +14627,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                       </div>
                     </div>
                     <div class="notice-body announcement-body">
-                      ${n.imageUrl ? `<div class="n-image"><img src="${escapeHtml(toDirectImageUrl(n.imageUrl))}" alt="ঘোষণার ছবি" data-preview-image="${escapeHtml(n.imageUrl)}" style="cursor:zoom-in;max-width:100%;border-radius:8px;margin-bottom:10px;" title="বড় করে দেখতে ক্লিক করুন"><div class="no-print" style="margin:-4px 0 10px;"><button type="button" class="btn btn-outline btn-sm" data-dl-image="${escapeHtml(n.imageUrl)}" data-dl-name="${escapeHtml(n.title || 'ছবি')}" title="ছবিটি ডাউনলোড করুন">⬇️ ছবি ডাউনলোড</button></div></div>` : ''}
+                      ${n.imageUrl ? `<div class="n-image"><img src="${escapeHtml(toDirectImageUrl(n.imageUrl))}" alt="ঘোষণার ছবি" data-preview-image="${escapeHtml(n.imageUrl)}" style="cursor:zoom-in;max-width:100%;border-radius:8px;margin-bottom:10px;" title="বড় করে দেখতে ক্লিক করুন"><div class="no-print" style="margin:-4px 0 10px;"><button type="button" class="btn btn-outline btn-sm" data-dl-image="${escapeHtml(n.imageUrl)}" data-dl-name="${escapeHtml(n.title || 'ছবি')}" title="ছবিটি ডাউনলোড করুন">⬇️ ফাইল ডাউনলোড</button></div></div>` : ''}
                       ${n.content ? `<div class="n-content">${escapeHtml(n.content)}</div>` : ''}
                       <div class="n-meta"><span>${dateStr ? '📅 ' + dateStr : ''}</span><span class="n-idx">#${idx + 1}</span></div>
                     </div>
