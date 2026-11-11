@@ -2,6 +2,7 @@
 <html lang="bn">
 <head>
     <meta charset="UTF-8" />
+    <!-- 🔧 [v16.5.78] রিসিপ্ট নম্বরের আইডি এখন যিনি এন্ট্রি দিচ্ছেন তাঁর (এডমিন v90-এর সাথে হুবহু একই নিয়ম)। -->
     <!-- 🔧 [v16.5.77] আইডি নং না থাকলে রিসিপ্ট নম্বর জারি হয় না (সতর্কতা), "নম্বর বাকি" দেখায়; আইডি দিলেই জারি হয়। -->
     <!-- 🔧 [v16.5.76] রিসিপ্ট নম্বর সদস্যভিত্তিক: MF-{সদস্য নং}{সাল}-{ক্রম} (যেমন MF-৪৪২৬-০০১), এডমিন v86-এর সাথে হুবহু একই নিয়ম। -->
     <!-- 🔧 [v16.5.75] ইউজার প্যানেলেও আসল রিসিপ্ট নম্বর জারি (এডমিনের একই নিয়মে; এলোমেলো "MF-AX0YX3M7" আর আসবে না); পাঠানোর অবস্থা "শেয়ারের মাধ্যমে পাঠানো হয়েছে" ধাঁচে। -->
@@ -6259,17 +6260,21 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             if (c.perMember) { c.pattern = '{prefix}-{mem}{yy}-{seq}'; c.digits = 3; c.resetYearly = true; c.yearMode = 'auto'; }
             return c;
         };
-        // 🆕 [v16.5.86] সদস্যভিত্তিক রিসিপ্ট নম্বর: MF-{সদস্য নং}{সাল ২ অঙ্ক}-{ওই সদস্যের নিজস্ব ক্রম} (যেমন MF-৪৪২৬-০০১)।
-        // সদস্য নং = সদস্যের "আইডি নং" (শুধু অঙ্ক হলে), নইলে তালিকার ক্রম; একবার ঠিক হলে receiptNoMap.mem-এ স্থায়ী। ভিন্ন সদস্যের নম্বর কখনো মেলে না।
-        const _rnoMemNo = (memberId, persist) => {
-            const root = (state.settings && state.settings.receiptNoMap) || {};
-            let mem = (root.mem && typeof root.mem === 'object') ? root.mem : {};
-            if (mem[memberId] != null && mem[memberId] !== '') return mem[memberId];
-            const used = new Set(Object.keys(mem).map(k => String(mem[k]))), ms = state.members || [], mb = ms.find(x => x && x.id === memberId);
-            const idn = mb ? parseInt(String(mb.idNumber || '').replace(/[০-৯]/g, c => '০১২৩৪৫৬৭৮৯'.indexOf(c)).replace(/\D/g, ''), 10) : NaN;
-            if (!(isFinite(idn) && idn > 0 && idn < 100000) || used.has(String(idn))) return null;
-            const n = idn;
-            if (persist) { const w = _rnoMapW(); if (!w.mem || typeof w.mem !== 'object') w.mem = {}; w.mem[memberId] = n; }
+        const _rnoEnterEmail = (e, persist) => {
+            const mp = (state.settings && state.settings.receiptNoMap) || {};
+            let em = String((e && e.addedByEmail) || (mp.by && e && mp.by[e.id]) || '').trim().toLowerCase();
+            if (!em) { em = String((window.currentUser && window.currentUser.email) || '').trim().toLowerCase(); if (persist && em && e && e.id) { const w = _rnoMapW(); if (!w.by || typeof w.by !== 'object') w.by = {}; w.by[e.id] = em; } }
+            return em;
+        };
+        // 🆕 [v16.5.78] রিসিপ্ট নম্বরে বসে "যিনি এন্ট্রি দিচ্ছেন (লগইন করা ইউজার)"-এর আইডি নম্বর — যাঁর নামে টাকা তাঁর নয়।
+        // ক্রম: ১) ইউজার-ডকের "গ্রুপ আইডি নম্বর" (groupIdNo) ২) না থাকলে ওই ইমেইলের সদস্য-রেকর্ডের "আইডি নং"। কোনোটাই না থাকলে নম্বর আটকে থাকে।
+        const _rnoEnterNo = (e, persist) => {
+            const em = _rnoEnterEmail(e, persist); if (!em) return null;
+            const dg = (v) => { const d = parseInt(String(v || '').replace(/[০-৯]/g, c => '০১২৩৪৫৬৭৮৯'.indexOf(c)).replace(/\D/g, ''), 10); return (isFinite(d) && d > 0 && d < 100000) ? d : null; };
+            const own = window._ownUserDoc && String(window._ownUserDoc.email || '').toLowerCase() === em ? window._ownUserDoc : null;
+            const u = own || (typeof userList !== 'undefined' ? userList : []).find(x => x && String(x.email || '').toLowerCase() === em);
+            let n = u ? dg(u.groupIdNo) : null;
+            if (n == null) { const m = (state.members || []).find(x => x && String(x.email || '').trim().toLowerCase() === em); n = m ? dg(m.idNumber) : null; }
             return n;
         };
         const _rnoYear = (c, d) => c.yearMode === 'none' ? '' : (c.yearMode === 'fixed' ? c.fixedYear : String(d.getFullYear()));
@@ -6290,7 +6295,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
         };
         const _rnoApplies = (e, c) => c.enabled && e && e.id && !/^(sample|smp_)/.test(String(e.id)) && e.memberId !== '__sample' && (!c.since || String(e.date || '').slice(0, 10) >= c.since);
         const _rnoIssue = (e) => {
-            const c = _rnoCfg(), d = new Date(), m = _rnoMapW(), mem = _rnoMemNo(e.memberId, true), key = _rnoKey(c, d, mem);
+            const c = _rnoCfg(), d = new Date(), m = _rnoMapW(), mem = _rnoEnterNo(e, true), key = _rnoKey(c, d, mem);
             if (c.perMember && mem == null) return '';   // আইডি নং নেই — জারি হবে না
             const G = window.mfRnoGroup, gi = m.grp && m.grp[e.id]; let reuse = '';
             if (G && G.no) reuse = G.no;
@@ -6311,10 +6316,10 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                 const c = _rnoCfg(); if (!c.enabled) return;
                 const mm = state.settings.receiptNoMap; if (!mm || !Array.isArray(mm.base)) return;   // এডমিন এখনো ক্রমিক চালু করেননি → কিছু করা হবে না
                 const m = _rnoMapW(), bs = new Set(mm.base);
-                const blk = [], todo = (state.monthly || []).concat(state.yearly || []).filter(e => e && Number(e.amount) > 0 && _rnoApplies(e, c) && !m.assigned[e.id] && !bs.has(e.id) && !(c.perMember && _rnoMemNo(e.memberId, false) == null && (blk.push(e), true)));
+                const blk = [], todo = (state.monthly || []).concat(state.yearly || []).filter(e => e && Number(e.amount) > 0 && _rnoApplies(e, c) && !m.assigned[e.id] && !bs.has(e.id) && !(c.perMember && _rnoEnterNo(e, false) == null && (blk.push(e), true)));
                 todo.sort((a, b) => (Date.parse(a.date || '') || 0) - (Date.parse(b.date || '') || 0));
                 todo.forEach(e => _rnoIssue(e));
-                if (blk.length) { const w = window.__rnoWarnP = window.__rnoWarnP || {}, nm = []; blk.forEach(e => { if (w[e.memberId]) return; w[e.memberId] = 1; const mb = (state.members || []).find(x => x && x.id === e.memberId); nm.push(mb ? mb.name : ''); }); if (nm.length) try { toast('⚠️ আইডি নং নেই — রিসিপ্ট নম্বর আটকে আছে: ' + nm.slice(0, 3).join(', ') + '। এডমিনকে সদস্যের আইডি নং দিতে বলুন।'); } catch (e2) { } }
+                if (blk.length) { const w = window.__rnoWarnP = window.__rnoWarnP || {}, nm = []; blk.forEach(e => { const em = _rnoEnterEmail(e, false) || '(লগইন নেই)'; if (w[em]) return; w[em] = 1; nm.push(em); }); if (nm.length) try { toast('⚠️ আপনার আইডি নম্বর নেই — রিসিপ্ট নম্বর আটকে আছে। এডমিনকে আপনার "গ্রুপ আইডি" দিতে বলুন (' + nm[0] + ')।'); } catch (e2) { } }
             } catch (err) { console.error('[রিসিপ্ট নম্বর]', err); } finally { _rnoBusyP = false; }
         };
         window.mfRnoGroupBegin = () => { window.mfRnoGroup = { no: null, ids: [] }; return window.mfRnoGroup; };
@@ -7806,7 +7811,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             const e = t && t.entry; if (!e) return '';
             const mp = (state.settings && state.settings.receiptNoMap && state.settings.receiptNoMap.assigned) || {};
             if (mp[e.id]) return mp[e.id];
-            try { const c = _rnoCfg(), rm = state.settings && state.settings.receiptNoMap; if (c.enabled && c.perMember && rm && Array.isArray(rm.base) && rm.base.indexOf(e.id) < 0 && _rnoApplies(e, c) && _rnoMemNo(e.memberId, false) == null) return 'নম্বর বাকি'; } catch (er) { }
+            try { const c = _rnoCfg(), rm = state.settings && state.settings.receiptNoMap; if (c.enabled && c.perMember && rm && Array.isArray(rm.base) && rm.base.indexOf(e.id) < 0 && _rnoApplies(e, c) && _rnoEnterNo(e, false) == null) return 'নম্বর বাকি'; } catch (er) { }
             return txnReceiptNoLegacy(t);
         };
         const emailUsedTokens = () => [];
