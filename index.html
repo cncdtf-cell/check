@@ -2,6 +2,7 @@
 <html lang="bn">
 <head>
     <meta charset="UTF-8" />
+    <!-- 🔧 [v16.5.80] এডমিনের "সব ডিভাইসে নোটিফিকেশন-অনুরোধ" পেলে অনুমতি দেওয়া ডিভাইসে চুপচাপ টোকেন হালনাগাদ, না থাকলে "চালু করুন" ব্যানার; দ্রুত খোলার জন্য Firebase preconnect/modulepreload। Rules অপরিবর্তিত। -->
     <!-- 🔧 [v16.5.78] রিসিপ্ট নম্বরের আইডি এখন যিনি এন্ট্রি দিচ্ছেন তাঁর (এডমিন v90-এর সাথে হুবহু একই নিয়ম)। -->
     <!-- 🔧 [v16.5.77] আইডি নং না থাকলে রিসিপ্ট নম্বর জারি হয় না (সতর্কতা), "নম্বর বাকি" দেখায়; আইডি দিলেই জারি হয়। -->
     <!-- 🔧 [v16.5.76] রিসিপ্ট নম্বর সদস্যভিত্তিক: MF-{সদস্য নং}{সাল}-{ক্রম} (যেমন MF-৪৪২৬-০০১), এডমিন v86-এর সাথে হুবহু একই নিয়ম। -->
@@ -37,6 +38,12 @@
     <!-- 🆕 [v16.5.42] 💬 WhatsApp/Messenger মেসেজ বাটন (canSendEmail থাকলে ✉️-এর পাশে) + সদস্য-ফর্মে whatsapp/fbUsername ঘর — admin v16.5.40-এর সমান। Rules অপরিবর্তিত। [v16.5.43] 🧾 "রিসিপ্ট ছবি সংযুক্ত" টিক (ইমেইলের একই হিসাব-রিসিপ্ট JPG হয়ে শেয়ার/ডাউনলোড) + সদস্য-তালিকায় WhatsApp/Facebook কলাম। [v16.5.44] 💬 মেসেজে এডমিনের টেমপ্লেট-ম্যানেজারের সব টেমপ্লেট ও সিগনেচার ব্যবহারযোগ্য; WhatsApp/Messenger বাটন সরাসরি নিজ অ্যাপের চ্যাট খোলে, শেয়ার-মেনু আলাদা। [v16.5.45] 💬 মোডালে টেমপ্লেটের নিচে "👁️ সব টেমপ্লেটের প্রিভিউ" লিংক + মেসেজ/ছবির লাইভ প্রিভিউ (এডমিনের মতো)। -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content" />
     <title>সরদার হাট তাফসিরুল ওয়াজ মাহফিল — তহবিল ব্যবস্থাপনা (ইউজার প্যানেল)</title>
+    <link rel="preconnect" href="https://www.gstatic.com" crossorigin />
+    <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin />
+    <link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin />
+    <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js" />
+    <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js" />
+    <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <!-- 🆕 [v16.5.2 ধাপ ৮] ফন্ট: শুরুতে শুধু ডিফল্ট, নন-ব্লকিং; বাকিগুলো দরকারে স্ক্রিপ্ট লোড করে -->
@@ -12411,6 +12418,12 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             <div class="field"><label>নাম</label><input type="text" id="sp-name" value="${escapeHtml(existing.displayName || (_pfMem && _pfMem.name) || user.email.split('@')[0])}" placeholder="আপনার নাম"></div>
             <div class="field"><label>মোবাইল নম্বর</label><input type="tel" id="sp-mobile" value="${escapeHtml(existing.mobile || (_pfMem && _pfMem.mobile) || '')}" placeholder="01XXX-XXXXXX"></div>
             <div class="field"><label>পিতা/স্বামীর নাম</label><input type="text" id="sp-father" value="${escapeHtml(existing.father || (_pfMem && _pfMem.father) || '')}" placeholder="আপনার পিতা/স্বামীর নাম"></div>
+            <div class="field" style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
+              <label>🔔 নোটিফিকেশন (এই ডিভাইসে)</label>
+              <div class="small muted" style="margin:4px 0 6px;">ফোনে নোটিফিকেশন না এলে এখানে চাপুন — অনুমতি চাইবে এবং না হলে কারণ দেখাবে।</div>
+              <button type="button" class="btn btn-outline btn-sm" id="sp-push-enable">📱 এই ডিভাইসে নোটিফিকেশন চালু করুন</button>
+              <div id="sp-push-st" class="small" style="margin-top:6px;white-space:pre-line;"></div>
+            </div>
             <!-- 🔧 [ধাপ ৫-১] গ্রুপ আইডি শুধু এডমিন এডিট করতে পারবেন -->
             <div class="field">
               <label>গ্রুপ আইডি নম্বর</label>
@@ -17809,11 +17822,11 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
                 log('শুরু হচ্ছে...');
                 if (!('Notification' in window) || !('serviceWorker' in navigator)) {
                     warn('এই ব্রাউজার Notification বা Service Worker সাপোর্ট করে না — থেমে গেল।');
-                    return;
+                    return { ok: false, msg: String('এই ব্রাউজার Notification বা Service Worker সাপোর্ট করে না — থেমে গেল।') };
                 }
                 if (!(await isMessagingSupported())) {
                     warn('Firebase Messaging এই কনটেক্সটে সাপোর্টেড না (iOS-এ "Add to Home Screen" ছাড়া এমন হতে পারে) — থেমে গেল।');
-                    return;
+                    return { ok: false, msg: String('Firebase Messaging এই কনটেক্সটে সাপোর্টেড না (iOS-এ "Add to Home Screen" ছাড়া এমন হতে পারে) — থেমে গেল।') };
                 }
 
                 log('সার্ভিস ওয়ার্কার রেজিস্টার করা হচ্ছে (/firebase-messaging-sw.js)...');
@@ -17839,12 +17852,13 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
                             };
                             document.addEventListener('pointerdown', onTap, true);
                         }
-                        return;
+                        return { ok: false, msg: 'ব্রাউজারের অনুমতি-বক্স দেখা যায়নি — স্ক্রিনে একবার ট্যাপ করে আবার চেষ্টা করুন' };
                     }
+                    return { ok: false, msg: 'অনুমতি এখনো দেওয়া হয়নি — ট্যাপ করলে ব্রাউজার অনুমতি চাইবে' };
                 }
                 if (permission !== 'granted') {
                     warn('পারমিশন দেওয়া হয়নি (' + permission + ') — টোকেন সংগ্রহ বাদ দেওয়া হলো।');
-                    return;
+                    return { ok: false, msg: String('পারমিশন দেওয়া হয়নি (' + permission + ') — টোকেন সংগ্রহ বাদ দেওয়া হলো।') };
                 }
 
                 log('FCM টোকেন সংগ্রহ করা হচ্ছে...');
@@ -17852,7 +17866,7 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
                 const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: registration });
                 if (!token) {
                     warn('getToken() খালি ফলাফল দিয়েছে — টোকেন পাওয়া যায়নি।');
-                    return;
+                    return { ok: false, msg: String('getToken() খালি ফলাফল দিয়েছে — টোকেন পাওয়া যায়নি।') };
                 }
                 log('✅ টোকেন পাওয়া গেছে (শুরুর ১৫ অক্ষর): ' + token.substring(0, 15) + '...');
 
@@ -17868,11 +17882,63 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
                     if (window.toast) window.toast(`${title}${body ? ': ' + body : ''}`,
                         targetTab ? () => window.goToTab(targetTab) : undefined);
                 });
+                return { ok: true, msg: 'এই ডিভাইসের টোকেন সেভ হয়েছে (…' + token.slice(-6) + '), নোটিফিকেশন এখন এই ডিভাইসে আসবে' };
             } catch (e) {
                 warn('এরর হয়েছে (অ্যাপের বাকি অংশ স্বাভাবিক চলবে): ' + (e && e.message ? e.message : e));
                 console.error(e);
+                return { ok: false, msg: 'এরর: ' + (e && e.message ? e.message : e) };
             }
         };
+        // 🆕 [v16.5.79] বোতাম চেপে এই ডিভাইসে নোটিফিকেশন চালু (ইউজারের ট্যাপে অনুমতি চাওয়া) + না-হলে কারণসহ বার্তা
+        document.addEventListener('click', async (ev) => {
+            const b = ev.target.closest && ev.target.closest('#sp-push-enable'); if (!b) return;
+            const st = document.getElementById('sp-push-st'); if (st) st.textContent = '⏳ ...';
+            try { const r = await window.mfPushEnable(); if (st) st.textContent = r.lines.join('\n'); } catch (e) { if (st) st.textContent = '❌ ' + (e.message || e); }
+        });
+        window.mfPushEnable = async () => {
+            const lines = [], ua = navigator.userAgent || '';
+            const uid = (window.currentUser && window.currentUser.uid) || (typeof currentUser !== 'undefined' && currentUser && currentUser.uid) || '';
+            if (!uid) return { ok: false, lines: ['❌ লগইন করা নেই — আগে লগইন করুন'] };
+            if (!window.isSecureContext) lines.push('⚠️ পেজটি https-এ নেই — নোটিফিকেশন চলবে না');
+            if (/FBAN|FBAV|FB_IAB|Messenger|Instagram|Line\/|; wv\)/i.test(ua)) lines.push('⚠️ এটি Facebook/Messenger/অন্য অ্যাপের ভেতরের ব্রাউজার — এখানে নোটিফিকেশন চলে না। লিংকটি Chrome (ফোনের মূল ব্রাউজার)-এ খুলুন।');
+            const ios = /iPhone|iPad|iPod/i.test(ua), standalone = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone;
+            if (ios && !standalone) lines.push('⚠️ আইফোনে নোটিফিকেশনের জন্য Safari-তে Share → "Add to Home Screen" করে হোম-স্ক্রিনের আইকন থেকে খুলতে হবে।');
+            lines.push('অনুমতির অবস্থা: ' + (('Notification' in window) ? Notification.permission : 'এই ব্রাউজারে সাপোর্ট নেই'));
+            if ('Notification' in window && Notification.permission === 'denied') {
+                lines.push('❌ নোটিফিকেশন ব্লক করা আছে — ব্রাউজারের ঠিকানা-বারের 🔒 / সাইট-সেটিংস → Notifications → Allow করুন (ফোনের Settings → Apps → Chrome → Notifications-ও চালু থাকতে হবে), তারপর আবার চাপুন।');
+                return { ok: false, lines };
+            }
+            const r = await initPushNotifications(uid);
+            lines.push((r && r.ok ? '✅ ' : '❌ ') + (r ? r.msg : 'অজানা ফল'));
+            return { ok: !!(r && r.ok), lines };
+        };
+
+        // 🆕 [v16.5.80] এডমিন "সব ডিভাইসে নোটিফিকেশন অনুরোধ" চাপলে app_settings/user_panel_toggle.pushReqAt বদলায়।
+        // প্রতিটি ডিভাইস খোলা থাকলে/খুললে এটি দেখে: অনুমতি দেওয়া থাকলে চুপচাপ টোকেন হালনাগাদ; না থাকলে বড় বোতামসহ ব্যানার (ব্রাউজার নিয়মে ট্যাপ ছাড়া অনুমতি-বক্স আসে না)।
+        // ⚠️ ব্যবহারকারী "Block/Don't allow" দিলে ব্রাউজার কোনোভাবেই টোকেন দেয় না — তাদের জন্য ব্যানারে চালু করার ধাপ দেখানো হয়।
+        window.mfPushCampaignCheck = (data) => {
+            try {
+                const at = data && data.pushReqAt; if (!at) return;
+                const uid = window.currentUser && window.currentUser.uid; if (!uid) return;
+                let seen = ''; try { seen = localStorage.getItem('mf_push_req_seen') || ''; } catch (e) { }
+                if (seen === at) return;
+                if (!('Notification' in window)) return;
+                const done = () => { try { localStorage.setItem('mf_push_req_seen', at); } catch (e) { } const o = document.getElementById('mf-push-banner'); if (o) o.remove(); };
+                if (Notification.permission === 'granted') { initPushNotifications(uid).then(done, done); return; }
+                if (document.getElementById('mf-push-banner')) return;
+                const bn = document.createElement('div'); bn.id = 'mf-push-banner';
+                bn.style.cssText = 'position:fixed;left:10px;right:10px;bottom:12px;z-index:99999;background:#0a8f5b;color:#fff;border-radius:14px;padding:12px 14px;box-shadow:0 6px 24px rgba(0,0,0,.35);font-size:14px;line-height:1.5;';
+                const denied = Notification.permission === 'denied';
+                bn.innerHTML = '<div style="font-weight:700;margin-bottom:4px;">🔔 নোটিফিকেশন চালু করুন</div><div id="mf-pb-t" style="white-space:pre-line;">' + (denied ? 'নোটিফিকেশন ব্লক করা আছে। ঠিকানা-বারের 🔒 → Site settings → Notifications → Allow করুন, তারপর নিচের বোতাম চাপুন।' : 'নতুন নোটিশ, চ্যাট ও রিকোয়েস্ট সময়মতো পেতে অনুমতি দিন।') + '</div><div style="display:flex;gap:8px;margin-top:8px;"><button type="button" id="mf-pb-go" style="flex:1;min-height:44px;border:0;border-radius:10px;font-weight:700;background:#fff;color:#0a6b46;">📱 চালু করুন</button><button type="button" id="mf-pb-x" style="min-height:44px;padding:0 14px;border:1px solid #fff;border-radius:10px;background:transparent;color:#fff;">পরে</button></div>';
+                document.body.appendChild(bn);
+                document.getElementById('mf-pb-x').onclick = () => bn.remove();
+                document.getElementById('mf-pb-go').onclick = async () => {
+                    const t = document.getElementById('mf-pb-t'); t.textContent = '⏳ ...';
+                    try { const r = await window.mfPushEnable(); t.textContent = r.lines.join('\n'); if (r.ok) { done(); setTimeout(() => bn.remove(), 2500); bn.style.background = '#0a8f5b'; } } catch (e) { t.textContent = '❌ ' + (e.message || e); }
+                };
+            } catch (e) { console.error('[push campaign]', e); }
+        };
+
 
         // নোটিফিকেশনের data payload (type: notices/chat/requests) থেকে কোন ট্যাবে যেতে হবে বের করা
         const notificationDataToTab = (data) => {
@@ -18075,6 +18141,7 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
             const docRef = doc(db, 'app_settings', 'user_panel_toggle');
             unsubscribeUserPanelToggle = onSnapshot(docRef, (snap) => {
                 const nextFlag = !!(snap.exists() && snap.data().on);
+                try { if (snap.exists() && window.mfPushCampaignCheck) window.mfPushCampaignCheck(snap.data()); } catch (e) { }
                 if (window.userPanelToggleOn !== nextFlag) {
                     window.userPanelToggleOn = nextFlag;
                     if (typeof window.renderMain === 'function') window.renderMain();
