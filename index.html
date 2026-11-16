@@ -2,6 +2,13 @@
 <html lang="bn">
 <head>
     <meta charset="UTF-8" />
+    <!-- 🔧 [v16.5.87] (১) আইডি নং = প্রিফিক্স+সংখ্যা (MP-023) — ফরম্যাট এডমিনের সেটিংস থেকে। (২) "আমার অনুদান" টেবিলও এডমিনের সাজানো কলাম-বিন্যাস মানে; আলাদা ইউজার-প্রস্থ ডিফল্ট বন্ধ। (৩) রিসিপ্ট নম্বর এন্ট্রির গায়ে সেভ — ক্লাউডে যায়, সবাই দেখে; এককালীন অনুদান এখন ক্লাউডে সেভ হয় (আগে শুধু লোকালে); অন্যের এন্ট্রিতে নিজের আইডিতে নম্বর জারি বন্ধ। (৪) মেথড কলামে "পাঠানো হয়েছে" বাদ। -->
+    <!-- 🔧 [v16.5.86] এডমিনের নোটিফিকেশন-অনুরোধ বন্ধ থাকলে (pushReqOn=false) ব্যানার/অনুরোধ আসে না; ব্যানারের ✕ চাপলে একই অনুরোধ আর ফেরে না। -->
+    <!-- 🔧 [v16.5.85] ডাবল-এন্ট্রি সতর্কতা এখন এককালীন উইজার্ড ও বার্ষিক এন্ট্রি সম্পাদনাতেও (তারিখ/টাকা বদলালে)। -->
+    <!-- 🔧 [v16.5.84] ডাবল-এন্ট্রি সতর্কতা (একই সদস্য+একই দিন+একই টাকা আগে থাকলে সংরক্ষণের আগে নিশ্চিতকরণ); নাম-লকের ভেতরে লাইভ-তালিকা সাপোর্ট (এডমিনের জন্য)। আগের সব আচরণ অক্ষত। Rules অপরিবর্তিত। -->
+    <!-- 🔧 [v16.5.83] নাম-লক (এডমিন প্যানেলের সাথে একই entry_locks): ফান্ড কালেক্টে নাম বাছলে লক, অন্য কেউ একই নামে একসাথে এন্ট্রি দিতে পারে না। ⚠️ Rules-এ entry_locks লাগবে। -->
+    <!-- 🔧 [v16.5.82] সদস্য ফর্মে আইডি-নং সাজেশন (এডমিনের মতো): নতুন সদস্যে সর্বশেষের পরের নম্বর, ফাঁকা নম্বর ক্লিকে বসে, ডুপ্লিকেটে সতর্কতা। -->
+    <!-- 🔧 [v16.5.81] (০) সার্চ-বটমনাভ: বাংলা মাসের নাম (যেমন "জুন") ও পরিমাণ দিয়েও মাসিক/বার্ষিক খোঁজা যায়। (১) সার্চ-বাগ ফিক্স (অক্ষর+সংখ্যা মেশানো সার্চে সবাই দেখাত)। (২) এডমিনের মতো: মেথড কলামে "✓ পাঠানো হয়েছে · মাধ্যম" এবং বার্ষিক/এককালীন অনুদান সংরক্ষণের পর শেয়ার প্যানেল। -->
     <!-- 🔧 [v16.5.80] এডমিনের "সব ডিভাইসে নোটিফিকেশন-অনুরোধ" পেলে অনুমতি দেওয়া ডিভাইসে চুপচাপ টোকেন হালনাগাদ, না থাকলে "চালু করুন" ব্যানার; দ্রুত খোলার জন্য Firebase preconnect/modulepreload। Rules অপরিবর্তিত। -->
     <!-- 🔧 [v16.5.78] রিসিপ্ট নম্বরের আইডি এখন যিনি এন্ট্রি দিচ্ছেন তাঁর (এডমিন v90-এর সাথে হুবহু একই নিয়ম)। -->
     <!-- 🔧 [v16.5.77] আইডি নং না থাকলে রিসিপ্ট নম্বর জারি হয় না (সতর্কতা), "নম্বর বাকি" দেখায়; আইডি দিলেই জারি হয়। -->
@@ -5753,17 +5760,18 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
         const toBengaliNum = n => String(n).replace(/[0-9]/g, d => CONFIG.BN_DIGITS[parseInt(d)]);
         const bnToEnDigits = s => String(s ?? '').replace(/[০-৯]/g, d => String(CONFIG.BN_DIGITS.indexOf(d)));
         const digitsOnly = s => bnToEnDigits(s).replace(/[^0-9]/g, '');
+        const nrm = s => String(s ?? '').normalize('NFC').replace(/[\u200c\u200d]/g, '').toLowerCase().replace(/\s+/g, ' ');   // 🆕 [v16.5.85] সার্চ-নর্মালাইজ: বাংলা ড়/ঢ়/য় এর ভিন্ন কোড, অদৃশ্য ZWJ/ZWNJ ও বাড়তি স্পেস সমান ধরা
+        const isNumQ = n => /^[0-9\s+\-().,/:]+$/.test(n);   // 🔧 শুধু সংখ্যা/ফোনের চিহ্ন হলে তবেই সংখ্যা-ভিত্তিক মিল
 
         const memberMatches = (m, q) => {
             if (!q) return true;
-            const needle = bnToEnDigits(q).trim().toLowerCase();
+            const needle = nrm(bnToEnDigits(q)).trim();
             if (!needle) return true;
-            if ((m.name || '').toLowerCase().includes(needle) || (m.father || '').toLowerCase().includes(needle)) return true;
-            // 🆕 [১.৪] নাম/পিতার নাম/মোবাইলের পাশাপাশি এখন আইডি নম্বর দিয়েও সার্চ করা যাবে
-            if ((m.idNumber || '').toString().toLowerCase().includes(needle)) return true;
+            if (nrm(m.name).includes(needle) || nrm(m.father).includes(needle)) return true;
+            if (nrm(bnToEnDigits(m.idNumber)).includes(needle)) return true;
             const nd = digitsOnly(q);
-            if (nd) return digitsOnly(m.mobile || '').includes(nd) || digitsOnly((m.idNumber || '').toString()).includes(nd);
-            return (m.mobile || '').toLowerCase().includes(needle);
+            if (nd && isNumQ(needle)) return digitsOnly(m.mobile || '').includes(nd) || digitsOnly((m.idNumber || '').toString()).includes(nd);
+            return nrm(m.mobile).includes(needle);
         };
 
         const mobileLink = (mobile, cls) => {
@@ -6030,14 +6038,18 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                     const method = document.getElementById('smc-ot-method').value;
                     const collector = document.getElementById('smc-ot-collector').value;
                     const remarks = document.getElementById('smc-ot-remarks').value.trim();
-                    state.yearly.push({ id: uid(), memberId, date, amount: received, method, collector, remarks });
+                    if (!window.__mfDupOk && window.mfDup) { const _dd = window.mfDup.find({ memberId: memberId, amounts: [received], date: date }); if (_dd) { window.mfDup.ask(m.name, date, _dd, () => { window.__mfDupOk = true; try { document.getElementById('smc-preview-btn').onclick(); } finally { window.__mfDupOk = false; } }); return; } }
+                    const _cloudSnapOT = window.cloudSnapshotBefore(m);   // 🆕 [v16.5.102] এককালীন অনুদানও ক্লাউডে সেভ (আগে শুধু লোকালে থাকত, পরের সিঙ্কে হারিয়ে যেত)
+                    state.yearly.push({ id: uid(), memberId, date, amount: received, method, collector, remarks, addedByEmail: String((window.currentUser && window.currentUser.email) || '').toLowerCase() });
                     if (!m.willingYearly) { m.willingYearly = true; }
                     saveState();
                     addActivityLog('add', 'yearly', memberId,
                         `"${m.name}" — ${fmtMoney(received)} এককালীন/বার্ষিক অনুদান যোগ (সংগ্রহ উইজার্ড)`);
                     closeModal();
                     renderMain();
-                    toast('✅ এককালীন অনুদান সংরক্ষণ হয়েছে');
+                    toast('⏳ ক্লাউডে সংরক্ষণ হচ্ছে...');
+                    window.cloudCommitWithFeedback(window.cloudDiffSince(_cloudSnapOT, m), '✅ এককালীন অনুদান সংরক্ষণ হয়েছে');
+                    try { const _ne = state.yearly[state.yearly.length - 1]; if (_ne && window.mfYearlyShare) window.mfYearlyShare(_ne.id); } catch (er) { console.error(er); }
                     return;
                 }
                 smcState.memberId = memberId;
@@ -6301,33 +6313,56 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             return m;
         };
         const _rnoApplies = (e, c) => c.enabled && e && e.id && !/^(sample|smp_)/.test(String(e.id)) && e.memberId !== '__sample' && (!c.since || String(e.date || '').slice(0, 10) >= c.since);
+        // 🆕 [v16.5.102] জারি-করা নম্বর + "কে এন্ট্রি দিলেন" এন্ট্রির গায়েই লেখা হয় — কালেক্টররা settings লিখতে পারেন না, কিন্তু monthly/yearly লিখতে পারেন (cloudCommit এন্ট্রিসহ পাঠায়)
+        const _rnoStamp = (e, no) => { try { e.rno = String(no); const em = _rnoEnterEmail(e, false); if (em && !e.addedByEmail) e.addedByEmail = em; } catch (er) { } };
         const _rnoIssue = (e) => {
             const c = _rnoCfg(), d = new Date(), m = _rnoMapW(), mem = _rnoEnterNo(e, true), key = _rnoKey(c, d, mem);
             if (c.perMember && mem == null) return '';   // আইডি নং নেই — জারি হবে না
             const G = window.mfRnoGroup, gi = m.grp && m.grp[e.id]; let reuse = '';
             if (G && G.no) reuse = G.no;
             else if (gi) { const peer = Object.keys(m.grp).find(k => k !== e.id && m.grp[k] && m.grp[k].g === gi.g && m.assigned[k]); if (peer) reuse = m.assigned[peer]; }
-            if (reuse) { m.assigned[e.id] = reuse; if (G) G.ids.push(e.id); return reuse; }
+            if (reuse) { m.assigned[e.id] = reuse; _rnoStamp(e, reuse); if (G) G.ids.push(e.id); return reuse; }
             const used = new Set(Object.keys(m.assigned).map(k => m.assigned[k]));
             let n = (m.seq[key] === undefined || m.seq[key] === null) ? c.start : Number(m.seq[key]) + 1, no = _rnoFormat(n, c, d, mem), guard = 0;
             while (used.has(no) && guard++ < 100000) { n++; no = _rnoFormat(n, c, d, mem); }
-            m.seq[key] = n; m.assigned[e.id] = no;
+            m.seq[key] = n; m.assigned[e.id] = no; _rnoStamp(e, no);
             if (G && !G.no) { G.no = no; G.ids = [e.id]; }
             return no;
         };
         let _rnoBusyP = false;
         window.mfRnoEnsure = () => {
+            try { window.mfRnoAdopt(); } catch (e) { }
             if (_rnoBusyP || !state || !state.settings) return;
             _rnoBusyP = true;
             try {
                 const c = _rnoCfg(); if (!c.enabled) return;
                 const mm = state.settings.receiptNoMap; if (!mm || !Array.isArray(mm.base)) return;   // এডমিন এখনো ক্রমিক চালু করেননি → কিছু করা হবে না
                 const m = _rnoMapW(), bs = new Set(mm.base);
-                const blk = [], todo = (state.monthly || []).concat(state.yearly || []).filter(e => e && Number(e.amount) > 0 && _rnoApplies(e, c) && !m.assigned[e.id] && !bs.has(e.id) && !(c.perMember && _rnoEnterNo(e, false) == null && (blk.push(e), true)));
+                // 🆕 [v16.5.102] শুধু "এই ডিভাইসে নতুন তৈরি" এন্ট্রিতে নম্বর জারি (ক্লাউডের কপিতে যেটার টাকা ছিল না)। আগে যেকোনো সদস্য পাতা খুললেই অন্যের এন্ট্রিতেও নিজের আইডিতে নম্বর জারি হতো।
+                const cb = new Map(); { const b0 = window.__mfBase; if (!b0) return; (b0.monthly || []).concat(b0.yearly || []).forEach(x => { if (x && x.id) cb.set(x.id, Number(x.amount) || 0); }); }
+                const blk = [], todo = (state.monthly || []).concat(state.yearly || []).filter(e => e && Number(e.amount) > 0 && _rnoApplies(e, c) && !m.assigned[e.id] && !bs.has(e.id) && !(cb.has(e.id) && cb.get(e.id) > 0) && !(c.perMember && _rnoEnterNo(e, false) == null && (blk.push(e), true)));
                 todo.sort((a, b) => (Date.parse(a.date || '') || 0) - (Date.parse(b.date || '') || 0));
                 todo.forEach(e => _rnoIssue(e));
                 if (blk.length) { const w = window.__rnoWarnP = window.__rnoWarnP || {}, nm = []; blk.forEach(e => { const em = _rnoEnterEmail(e, false) || '(লগইন নেই)'; if (w[em]) return; w[em] = 1; nm.push(em); }); if (nm.length) try { toast('⚠️ আপনার আইডি নম্বর নেই — রিসিপ্ট নম্বর আটকে আছে। এডমিনকে আপনার "গ্রুপ আইডি" দিতে বলুন (' + nm[0] + ')।'); } catch (e2) { } }
             } catch (err) { console.error('[রিসিপ্ট নম্বর]', err); } finally { _rnoBusyP = false; }
+        };
+        // 🆕 [v16.5.102] রিসিপ্ট নম্বর এন্ট্রির গায়েই (e.rno / e.rg / e.addedByEmail) সেভ হয় — কালেক্টররা settings লিখতে পারেন না, কিন্তু monthly/yearly লিখতে পারেন।
+        // এই ফাংশন সেই নম্বর receiptNoMap-এ (শুধু মেমরিতে) তুলে নেয়, ফলে সব পুরনো রিডার অপরিবর্তিতভাবে নম্বর দেখে। এডমিনের জারি-করা নম্বর (assigned) সবসময় অগ্রাধিকার পায়।
+        window.mfRnoAdopt = () => {
+            try {
+                if (!state || !state.settings) return;
+                const all = (state.monthly || []).concat(state.yearly || []);
+                if (!all.some(e => e && e.rno)) return;
+                const mm = state.settings.receiptNoMap = (state.settings.receiptNoMap && typeof state.settings.receiptNoMap === 'object') ? state.settings.receiptNoMap : {};
+                if (!mm.assigned || typeof mm.assigned !== 'object') mm.assigned = {};
+                if (!mm.by || typeof mm.by !== 'object') mm.by = {};
+                all.forEach(e => {
+                    if (!e || !e.id || !e.rno) return;
+                    if (!mm.assigned[e.id]) mm.assigned[e.id] = String(e.rno);
+                    if (e.addedByEmail && !mm.by[e.id]) mm.by[e.id] = String(e.addedByEmail).toLowerCase();
+                    if (e.rg && e.rg.n > 1) { if (!mm.grp || typeof mm.grp !== 'object') mm.grp = {}; if (!mm.grp[e.id]) mm.grp[e.id] = e.rg; }
+                });
+            } catch (er) { console.error('[rno adopt]', er); }
         };
         window.mfRnoGroupBegin = () => { window.mfRnoGroup = { no: null, ids: [] }; return window.mfRnoGroup; };
         window.mfRnoGroupEnd = (G, getIds) => {
@@ -6339,7 +6374,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             }
             if (ids.length < 2) return;
             const mm = _rnoMapW(); if (!mm.grp || typeof mm.grp !== 'object') mm.grp = {};
-            ids.forEach((id, i) => { mm.grp[id] = { g: ids[0], i: i + 1, n: ids.length }; });
+            ids.forEach((id, i) => { mm.grp[id] = { g: ids[0], i: i + 1, n: ids.length }; const _e = (state.monthly || []).find(x => x.id === id) || (state.yearly || []).find(x => x.id === id); if (_e) _e.rg = mm.grp[id]; });   // 🆕 [v16.5.102] গ্রুপ-চিহ্নও এন্ট্রিতে
             try { saveState(); } catch (e) { }
         };
         // 🆕 [v16.5.83] "১/৪" চিহ্ন — একাধিক মাসের একসাথে-দেওয়া টাকার একই রিসিপ্ট নম্বরের অংশ
@@ -6349,7 +6384,8 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             const mp = (state.settings && state.settings.receiptNoMap && state.settings.receiptNoMap.assigned) || {};
             const no = id ? (mp[id] || '') : '';
             const tg = (no && window.mfGrpTag) ? window.mfGrpTag(id) : '';
-            return `<td class="${cls || 'muted'}">${no ? '<b>' + escapeHtml(no) + '</b>' : (Number(amount) > 0 ? '<span class="small muted" title="এডমিন প্যানেল চালু হলে নম্বর বসবে">নম্বর আসছে…</span>' : '—')}${(tg && noSent) ? ' <span class="small muted">' + tg + '</span>' : ''}${(!noSent && Number(amount) > 0 && id && window.mfSentHtml) ? window.mfSentHtml(id) : ''}</td>`;
+            const _mm = state.settings && state.settings.receiptNoMap, _old = !!(!no && id && _mm && Array.isArray(_mm.base) && _mm.base.indexOf(id) >= 0);   // 🆕 [v16.5.102] রিসিপ্ট-নম্বর চালুর আগের (পুরনো) এন্ট্রিতে নম্বর বসে না — "আসছে…" নয়, "—"
+            return `<td class="${cls || 'muted'}">${no ? '<b>' + escapeHtml(no) + '</b>' : ((Number(amount) > 0 && !_old) ? '<span class="small muted" title="নম্বর জারি হলে এখানে দেখাবে">নম্বর আসছে…</span>' : '—')}${(tg && noSent) ? ' <span class="small muted">' + tg + '</span>' : ''}${(!noSent && Number(amount) > 0 && id && window.mfSentHtml) ? window.mfSentHtml(id) : ''}</td>`;
         };
         // "শেয়ারের মাধ্যমে" / "ইমেইল ও শেয়ারের মাধ্যমে"
         const _viaTxt = (vs) => {
@@ -6357,6 +6393,15 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             const gen = { 'ইমেইল': 'ইমেইলের', 'হোয়াটসঅ্যাপ': 'হোয়াটসঅ্যাপের', 'মেসেঞ্জার': 'মেসেঞ্জারের', 'শেয়ার': 'শেয়ারের', 'এসএমএস': 'এসএমএসের', 'ফোন': 'ফোনের', 'সরাসরি': 'সরাসরি', 'অন্যান্য': 'অন্য' };
             const last = vs[vs.length - 1], g = gen[last] || (last + '-এর'), head = vs.slice(0, -1);
             return (head.length ? head.join(', ') + ' ও ' : '') + g + ' মাধ্যমে';
+        };
+        // 🆕 [v16.5.81] মেথড কলামে "✓ পাঠানো হয়েছে · মাধ্যম" (শুধু পাঠানো হলে)
+        window.mfSentTag = (id) => {
+            return '';   // 🆕 [v16.5.102] মেথড কলামে "✓ পাঠানো হয়েছে" আর দেখানো হয় না — পাঠানোর অবস্থা শুধু "রিসিপ্ট নং" কলামে
+            try {
+                const nt = id && state.settings && state.settings.receiptNoMap && state.settings.receiptNoMap.notified && state.settings.receiptNoMap.notified[id]; if (!nt) return '';
+                const via = _notVias(nt).join(', ');
+                return `<div class="small mf-sent-tag" style="color:#1b5e20;font-weight:600;white-space:nowrap;line-height:1.4;">✓ পাঠানো হয়েছে${via ? `<span style="font-weight:400;"> · ${escapeHtml(via)}</span>` : ''}</div>`;
+            } catch (e) { return ''; }
         };
         window.mfSentHtml = (id) => {
             const _tg = (window.mfGrpTag && window.mfGrpTag(id)) ? `<div class="small muted" style="white-space:nowrap;" title="একসাথে দেওয়া একাধিক মাসের টাকা — একই রিসিপ্ট নম্বর">অংশ ${window.mfGrpTag(id)}</div>` : '';
@@ -6557,6 +6602,78 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                 startImg();
             });
         };
+        // 🆕 [v16.5.81] বার্ষিক/এককালীন অনুদান সংরক্ষণের পরেও শেয়ার প্যানেল (ইমেইল · হোয়াটসঅ্যাপ · মেসেঞ্জার · শেয়ার) — পাঠালে মেথড কলামে "✓ পাঠানো হয়েছে" স্বয়ংক্রিয়
+        const openYearlyConfirmedModal = (entryId) => {
+            const e = (state.yearly || []).find(x => x.id === entryId); if (!e) return;
+            const m = memberById(e.memberId); const $q = id => document.getElementById(id);
+            const st = state.settings || {}, D = (typeof CONFIG !== 'undefined' && CONFIG.DEFAULT_SETTINGS) || {};
+            const org = st.name || D.name || 'মাহফিল কমিটি';
+            const name = m ? m.name : 'সম্মানিত দাতা';
+            const subject = 'অনুদান গ্রহণের নিশ্চয়তা — ' + org;
+            const msgInit = 'আসসালামু আলাইকুম ' + name + ',\n\nআপনার ' + fmtMoney(e.amount) + ' টাকার অনুদান' + (e.method ? ' (' + e.method + ')' : '') + (e.date ? ' ' + fmtDate(e.date) + ' তারিখে' : '') + ' সফলভাবে গ্রহণ করা হয়েছে। আল্লাহ আপনার দান কবুল করুন, আমিন।\n\n— ' + org;
+            const to = m ? (m.email || '') : '';
+            const waNum = (() => { let d = String((m && m.mobile) || '').replace(/[০-৯]/g, c => '০১২৩৪৫৬৭৮৯'.indexOf(c)).replace(/\D/g, ''); if (!d) return ''; if (d.indexOf('880') === 0) return d; if (d.charAt(0) === '0') return '88' + d; if (d.length === 10) return '880' + d; return d; })();
+            let imgFile = null, imgState = 'idle', imgPromise = null;
+            const buildImg = async () => {
+                const t = { kind: 'yearly', entry: e };
+                const show = { method: true, collector: true, thanks: true, contact: true, breakdown: false };
+                const sigWrap = (typeof withPdfSig === 'function' && typeof resolveSig === 'function') ? (fn => withPdfSig(resolveSig('', undefined), fn)) : (fn => fn());
+                try { if (typeof issueRno === 'function') issueRno(t); } catch (er) { }
+                const url = await sigWrap(() => generateJpgForType('simple', m, t, show, 'money'));
+                const parts = String(url).split(','), bin = atob(parts[1]), u8 = new Uint8Array(bin.length);
+                for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+                return new File([u8], sanitizeFileName('রিসিপ্ট-' + name) + '.jpg', { type: 'image/jpeg' });
+            };
+            const setSt = () => { const el = $q('yc-img-st'); if (!el) return; const on = $q('yc-img') && $q('yc-img').checked; el.textContent = !on ? '' : imgState === 'loading' ? '⏳ রিসিপ্ট তৈরি হচ্ছে…' : imgState === 'ready' ? '✅ রিসিপ্ট তৈরি' : imgState === 'error' ? '⚠️ রিসিপ্ট তৈরি হয়নি' : ''; };
+            const startImg = () => { if (imgState === 'loading' || imgState === 'ready') return; imgState = 'loading'; setSt(); imgPromise = buildImg().then(f => { imgFile = f; imgState = 'ready'; setSt(); return f; }).catch(er => { console.error(er); imgState = 'error'; setSt(); return null; }); };
+            const download = f => { const u = URL.createObjectURL(f), a = document.createElement('a'); a.href = u; a.download = f.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 4000); };
+            const copyText = async (s) => { try { await navigator.clipboard.writeText(s); return true; } catch (er) { try { const ta = $q('yc-msg'); ta.focus(); ta.select(); return document.execCommand('copy'); } catch (e2) { return false; } } };
+            const openUrl = u => { const w = window.open(u, '_blank', 'noopener'); if (!w) window.location.href = u; };
+            const mark = (ch, label) => {
+                const b = document.querySelector('[data-yc-ch="' + ch + '"]');
+                if (b) { b.style.background = '#e7f6ec'; b.style.borderColor = '#2e7d32'; b.style.color = '#1b5e20'; const t = b.querySelector('.yc-tick'); if (t) t.textContent = ' ✓ পাঠানো হয়েছে'; }
+                toast('✓ ' + label + ' — পাঠানো হয়েছে');
+                try { if (window.mfNotifyAdd) window.mfNotifyAdd([e.id], label); } catch (er) { }
+                try { addActivityLog('email', 'yearly', e.memberId, label + '-এ অনুদানের বার্তা পাঠানো হয়েছে'); } catch (er) { }
+            };
+            const nativeShare = async (withImg) => {
+                const data = { text: $q('yc-msg').value, title: subject };
+                if (withImg && imgFile) { if (!(navigator.canShare && navigator.canShare({ files: [imgFile] }))) return null; data.files = [imgFile]; }
+                if (!navigator.share) return null;
+                try { await navigator.share(data); return true; } catch (er) { if (er && er.name === 'AbortError') return false; return null; }
+            };
+            const fallbackCopy = async (withImg) => { const ok = await copyText($q('yc-msg').value); if (withImg && imgFile) download(imgFile); toast((ok ? '📋 বার্তা কপি হয়েছে' : 'বার্তা বক্স থেকে কপি করুন') + (withImg && imgFile ? '; রিসিপ্ট ডাউনলোড হয়েছে — চ্যাটে সংযুক্ত করুন' : '')); };
+            const handlers = {
+                email: async () => { if (!to) { toast('এই সদস্যের ইমেইল ঠিকানা যোগ করা নেই'); return; } window.location.href = 'mailto:' + encodeURIComponent(to) + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent($q('yc-msg').value); if (imgFile && $q('yc-img').checked) toast('রিসিপ্ট জুড়তে "⬇️ ডাউনলোড" চেপে সংযুক্ত করুন'); mark('email', 'ইমেইল'); },
+                whatsapp: async () => { const wi = $q('yc-img').checked && !!imgFile; if (wi) { const r = await nativeShare(true); if (r === true) { mark('whatsapp', 'হোয়াটসঅ্যাপ'); return; } if (r === false) return; await fallbackCopy(true); } openUrl('https://wa.me/' + waNum + '?text=' + encodeURIComponent($q('yc-msg').value)); mark('whatsapp', 'হোয়াটসঅ্যাপ'); },
+                messenger: async () => { const wi = $q('yc-img').checked && !!imgFile; const r = await nativeShare(wi); if (r === true) { mark('messenger', 'মেসেঞ্জার'); return; } if (r === false) return; await fallbackCopy(wi); openUrl('https://www.messenger.com/'); mark('messenger', 'মেসেঞ্জার'); },
+                share: async () => { const wi = $q('yc-img').checked && !!imgFile; const r = await nativeShare(wi); if (r === true) { mark('share', 'শেয়ার'); return; } if (r === false) return; await fallbackCopy(wi); mark('share', 'শেয়ার'); }
+            };
+            const chBtn = (ch, ic, label) => `<button type="button" class="btn btn-outline" data-yc-ch="${ch}" style="justify-content:flex-start;gap:6px;text-align:left;">${ic} ${label}<span class="yc-tick small" style="margin-left:auto;"></span></button>`;
+            openModal(`
+                <h3>✅ অনুদান সংরক্ষণ হয়েছে</h3>
+                <p style="margin:8px 0 4px;"><strong>${escapeHtml(name)}</strong> — ${escapeHtml(fmtMoney(e.amount))}${e.method ? ' · ' + escapeHtml(e.method) : ''}</p>
+                <div class="field"><label class="small muted">ধন্যবাদ-বার্তা (চাইলে এডিট করুন)</label><textarea id="yc-msg" rows="6">${escapeHtml(msgInit)}</textarea></div>
+                <label style="display:flex;gap:8px;align-items:center;margin:4px 0 10px;"><input type="checkbox" id="yc-img" checked> 🧾 রিসিপ্টসহ পাঠান <span id="yc-img-st" class="small muted"></span></label>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">${chBtn('email', '✉️', 'ইমেইল')}${chBtn('whatsapp', '💬', 'হোয়াটসঅ্যাপ')}${chBtn('messenger', '📨', 'মেসেঞ্জার')}${chBtn('share', '📤', 'শেয়ার')}</div>
+                <div class="small muted" style="margin-top:8px;">যে মাধ্যমে পাঠাবেন সেটির টিক উঠবে এবং টেবিলের মেথড কলামে "✓ পাঠানো হয়েছে" নিজে নিজে লেখা হবে।</div>
+                <div class="modal-actions" style="flex-wrap:wrap;gap:8px;margin-top:10px;"><button class="btn btn-outline" id="yc-close">বন্ধ করুন</button><button class="btn btn-outline" id="yc-dl">⬇️ রিসিপ্ট ডাউনলোড</button></div>
+            `, () => {
+                $q('yc-close').onclick = closeModal;
+                $q('yc-img').addEventListener('change', () => { if ($q('yc-img').checked) startImg(); setSt(); });
+                $q('yc-dl').onclick = async () => { if (imgState === 'idle' || imgState === 'error') { imgState = 'idle'; startImg(); } const f = await imgPromise; if (f) download(f); else toast('রিসিপ্ট তৈরি করা যায়নি'); };
+                document.querySelectorAll('[data-yc-ch]').forEach(b => {
+                    b.onclick = async () => {
+                        const ch = b.getAttribute('data-yc-ch');
+                        if ($q('yc-img').checked && imgState === 'loading') { toast('⏳ রিসিপ্ট তৈরি হচ্ছে — একটু অপেক্ষা করে আবার চাপুন'); return; }
+                        if ($q('yc-img').checked && imgState === 'error') { imgState = 'idle'; startImg(); toast('⏳ রিসিপ্ট আবার তৈরি হচ্ছে — একটু পরে চাপুন'); return; }
+                        try { await handlers[ch](); } catch (er) { console.error(er); toast('পাঠানো যায়নি: ' + ((er && er.message) || '')); }
+                    };
+                });
+                startImg();
+            });
+        };
+        window.mfYearlyShare = openYearlyConfirmedModal;
 
         const wireSmcPreview = () => {
             document.getElementById('smc-back').onclick = () => openModal(smcStep1Html(), () => wireSmcStep1());
@@ -6611,6 +6728,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
 
             confirmBtn.onclick = () => {
                 if (smcState._saving) return; // 🆕 [ধাপ ০৭] ডাবল-সাবমিট প্রতিরোধ
+                if (window.mfLock && !window.mfLock.canSave(smcState.memberId)) { window.mfLock.lostMsg(); return; }
                 smcState._saving = true;
                 const m = memberById(smcState.memberId);
                 const _cloudSnap = window.cloudSnapshotBefore(m); // 🆕 [ধাপ ০৭] ক্লাউডে পাঠানোর জন্য আগের অবস্থা
@@ -6634,6 +6752,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                 const date = document.getElementById('smc-date').value || todayISO();
                 const method = document.getElementById('smc-method').value;
                 const collector = document.getElementById('smc-collector').value;
+                if (!window.__mfDupOk && window.mfDup) { const _dd = window.mfDup.find({ memberId: m.id, amounts: [result.receivedTotal].concat(result.perMonth.map(r => r.allocated)), date: date }); if (_dd) { window.mfDup.ask(m.name, date, _dd, () => { window.__mfDupOk = true; try { confirmBtn.onclick(); } finally { window.__mfDupOk = false; } }); return; } }
                 const monthlyAmt = getMemberMonthlyAmount(m);
                 // 🆕 [v16.5.83] একাধিক মাস একসাথে দিলে — সবগুলো এন্ট্রি একই রিসিপ্ট নম্বর পাবে (মাসভিত্তিক টাকা আলাদা থাকে)
                 const _rg = window.mfRnoGroupBegin ? window.mfRnoGroupBegin() : null;
@@ -6703,20 +6822,23 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
         // ======================================================================
         window.cloudSnapshotBefore = (m) => ({
             monthly: new Map((state.monthly || []).map(r => [r.id, JSON.stringify(r)])),
+            yearly: new Map((state.yearly || []).map(r => [r.id, JSON.stringify(r)])),
             logIds: new Set((state.activityLog || []).map(l => l && l.id)),
-            mem: m ? { id: m.id, advanceBalance: m.advanceBalance, willingMonthly: m.willingMonthly } : null
+            mem: m ? { id: m.id, advanceBalance: m.advanceBalance, willingMonthly: m.willingMonthly, willingYearly: m.willingYearly } : null
         });
         window.cloudDiffSince = (snap, m) => {
             const monthly = (state.monthly || []).filter(r => snap.monthly.get(r.id) !== JSON.stringify(r));
+            const yearly = (state.yearly || []).filter(r => snap.yearly && snap.yearly.get(r.id) !== JSON.stringify(r));
             const log = (state.activityLog || []).filter(l => l && !snap.logIds.has(l.id));
             const patchMembers = [];
             if (m && snap.mem) {
                 const f = {};
                 if (m.advanceBalance !== snap.mem.advanceBalance) f.advanceBalance = Number(m.advanceBalance) || 0;
                 if (m.willingMonthly !== snap.mem.willingMonthly) f.willingMonthly = !!m.willingMonthly;
+                if (m.willingYearly !== snap.mem.willingYearly) f.willingYearly = !!m.willingYearly;
                 if (Object.keys(f).length) patchMembers.push({ id: m.id, fields: f });
             }
-            return { upsert: { monthly }, patchMembers, log };
+            return { upsert: { monthly, yearly }, patchMembers, log };
         };
         // কমিট + ফলাফলের টোস্ট; ব্যর্থ হলে সার্ভারের সত্যে ফেরত (manualSyncNow)
         window.cloudCommitWithFeedback = async (ops, okMsg) => {
@@ -8489,7 +8611,11 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             }
             smcState = { memberId: memberId || null, mode: 'multi', months: [], received: '', useAdvance: true, manual: false,
                 lastResult: null, ot: {} };
-            openModal(smcStep1Html(), () => wireSmcStep1());
+            const _go = () => openModal(smcStep1Html(), () => wireSmcStep1());
+            if (memberId && window.mfLock) {   // 🆕 [v16.5.83] আগে থেকে বাছা সদস্য হলে এখনই নাম লক
+                const _m = memberById(memberId);
+                window.mfLock.acquire(memberId, _m ? _m.name : '').then(r => { if (r.ok) _go(); else window.mfLock.deny(r, _m ? _m.name : '', memberId); });
+            } else _go();
         };
         window.openSmartMonthlyCollection = openSmartMonthlyCollection;
 
@@ -9274,7 +9400,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
         const effectiveColumnConfig = (tableId, defaultColumns) => {
             const base = _effectiveColumnConfigBase(tableId, defaultColumns);
             const t = GLOBAL_USER_COL_WIDTHS.tables && GLOBAL_USER_COL_WIDTHS.tables[tableId];
-            if (!t || !base || !Array.isArray(base.columns)) return base;
+            if (!t || t._on !== true || !base || !Array.isArray(base.columns)) return base;   // 🆕 [v16.5.102] এডমিন স্পষ্টভাবে আলাদা ইউজার-প্রস্থ চালু না করলে এডমিনের প্রস্থই প্রযোজ্য
             let any = false;
             const columns = base.columns.map(c => {
                 const v = Number(t[c.key]);
@@ -10316,7 +10442,91 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
           `;
         };
 
-        const initMemberPicker = (idPrefix, onSelect) => {
+
+        // 🆕 [v16.5.98] নাম-লক: ফান্ড কালেক্টে সদস্যের নাম বাছলে সেই নাম লক হয় — অন্য কেউ একই নামে একসাথে এন্ট্রি দিতে পারে না।
+        // লক থাকে Firestore-এর entry_locks/{সদস্য-আইডি}-এ; সার্ভার-সময় (Rules) দিয়ে নিশ্চিত হয়, তাই দুজন একসাথে চাইলেও একজনই পায়।
+        // ৪০ সেকেন্ডে নবায়ন; ২ মিনিট নিষ্ক্রিয় থাকলে বা জানালা বন্ধ হলে লক নিজে খুলে যায়।
+        const mfLock = (() => {
+            const COL = 'entry_locks', HB_MS = 40000;
+            let held = null, hbT = null, idleT = null, locks = new Map(), started = false, warned = false, lastAct = Date.now(), serr = false; const lost = new Set(), subs = new Set(), seen = new Map();
+            const F = () => window._firestore, DB = () => window._firestoreDb, me = () => window.currentUser || {};
+            const ready = () => !!(F() && DB() && F().serverTimestamp && me().uid);
+            const ref = (id) => F().doc(DB(), COL, String(id));
+            const payload = (id, name) => ({ uid: me().uid, email: me().email || '', name: String(name || '').slice(0, 80), member: String(id), by: String((window._ownUserDoc && window._ownUserDoc.displayName) || me().displayName || me().email || '').slice(0, 80), hb: F().serverTimestamp() });
+            const start = () => { if (started || !ready()) return; started = true; try { F().onSnapshot(F().collection(DB(), COL), (snap) => { const m = new Map(); snap.forEach(d => m.set(d.id, d.data())); locks = m; serr = false; const now = Date.now(); m.forEach((d, id) => { const s = seen.get(id); if (!s || s.uid !== d.uid) seen.set(id, { uid: d.uid, t: now }); }); Array.from(seen.keys()).forEach(id => { if (!m.has(id)) seen.delete(id); }); subs.forEach(f => { try { f(); } catch (e) { } }); }, () => { serr = true; subs.forEach(f => { try { f(); } catch (e) { } }); }); } catch (e) { } };
+            const holderOf = (id) => { const d = locks.get(String(id)); if (!d || d.uid === me().uid) return null; const ms = d.hb && d.hb.toMillis ? d.hb.toMillis() : 0; if (ms && Date.now() - ms > 150000) return null; return d; };
+            const stopTimers = () => { clearInterval(hbT); clearInterval(idleT); hbT = idleT = null; };
+            const beat = async () => { if (!held) return; try { await F().setDoc(ref(held.id), payload(held.id, held.name)); lost.delete(held.id); } catch (e) { lost.add(held.id); } };
+            const release = async (id) => { id = id || (held && held.id); if (!id) return; if (held && held.id === id) { held = null; stopTimers(); } lost.delete(id); try { if (ready()) await F().deleteDoc(ref(id)); } catch (e) { } };
+            const sel = (id) => '#main .cell-input[data-member="' + String(id).replace(/"/g, '\\"') + '"]';
+            const watchModal = () => { let miss = 0; idleT = setInterval(() => { if (!held) return; if (held.inline) { if (!document.querySelector(sel(held.id))) { if (++miss >= 2) release(); return; } miss = 0; const ae = document.activeElement, inRow = !!(ae && ae.matches && ae.matches(sel(held.id))), idle = Date.now() - lastAct; if ((!inRow && idle > 8000) || idle > 120000) release(); return; } if (!document.getElementById('modal-backdrop')) { if (++miss >= 2) release(); } else miss = 0; }, 1500); };
+            const live = (d) => { const ms = d && d.hb && d.hb.toMillis ? d.hb.toMillis() : 0; return !(ms && Date.now() - ms > 150000); };
+            const list = () => Array.from(locks.entries()).filter(([id, d]) => live(d)).map(([id, d]) => ({ id, name: d.name || '', by: d.by || d.email || '', email: d.email || '', mine: d.uid === me().uid, since: (seen.get(id) || { t: Date.now() }).t }));
+            const force = async (id) => { if (held && held.id === id) { await release(id); return; } await F().deleteDoc(ref(id)); };
+            const acquire = async (id, name, opts) => {
+                const inline = !!(opts && opts.inline); lastAct = Date.now();
+                if (!ready()) return { ok: true, degraded: true };
+                start();
+                if (held && held.id !== id) await release(held.id);
+                if (held && held.id === id) { if (!inline) held.inline = false; return { ok: true }; }
+                try { await F().setDoc(ref(id), payload(id, name)); }
+                catch (e) {
+                    let d = null; try { const s = await F().getDoc(ref(id)); d = s.exists() ? s.data() : null; } catch (e2) { }
+                    if (d && d.uid && d.uid !== me().uid) return { ok: false, holder: d };
+                    if (!warned) { warned = true; try { toast('⚠️ নাম-লক চালু নেই (Firestore Rules-এ entry_locks যোগ হয়নি) — একই নামে একসাথে এন্ট্রি দিলে সতর্ক থাকুন'); } catch (x) { } }
+                    return { ok: true, degraded: true };
+                }
+                held = { id, name, inline }; lost.delete(id); stopTimers(); hbT = setInterval(beat, HB_MS); watchModal();
+                return { ok: true };
+            };
+            const canSave = (id) => !lost.has(String(id));
+            const deny = (r, name, id) => {
+                const h = (r && r.holder) || {}; const who = h.by || h.email || 'অন্য একজন';
+                const isAdm = (typeof isAdminUser === 'function') && isAdminUser();
+                const old = document.getElementById('mf-lock-deny'); if (old) old.remove();
+                const ov = document.createElement('div'); ov.id = 'mf-lock-deny';
+                ov.style.cssText = 'position:fixed;inset:0;z-index:2147483100;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:14px;';
+                ov.innerHTML = '<div style="background:var(--paper-raised,#fff);color:inherit;border-radius:16px;padding:16px;max-width:440px;width:100%;border:2px solid #b3261e;font-size:15px;line-height:1.6;"><h3 style="margin:0 0 8px;">🔒 এই নামে এখন অন্যজন এন্ট্রি করছেন</h3><p style="margin:0 0 8px;">"<b>' + escapeHtml(name || '') + '</b>" নামে এখন <b>' + escapeHtml(who) + '</b>' + (h.email && h.by && h.by !== h.email ? ' (' + escapeHtml(h.email) + ')' : '') + ' এন্ট্রি করছেন। একই নামে একসাথে এন্ট্রি দিলে ভুল হতে পারে, তাই লক আছে।</p><p class="small muted" style="margin:0 0 10px;">তিনি শেষ করলে বা ২ মিনিট নিষ্ক্রিয় থাকলে লক নিজে খুলে যাবে — তখন আপনি এন্ট্রি দিতে পারবেন।</p><div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">' + (isAdm ? '<button type="button" class="btn btn-outline" id="lk-force">🔓 জোর করে লক খুলুন (এডমিন)</button>' : '') + '<button type="button" class="btn btn-primary" id="lk-ok">ঠিক আছে</button></div></div>';
+                document.body.appendChild(ov);
+                document.getElementById('lk-ok').onclick = () => ov.remove();
+                const fb = document.getElementById('lk-force'); if (fb) fb.onclick = async () => { try { await F().deleteDoc(ref(id)); toast('🔓 লক খোলা হয়েছে — আবার নাম নির্বাচন করুন'); } catch (e) { toast('❌ লক খোলা যায়নি'); } ov.remove(); };
+            };
+            return { acquire, release, canSave, holderOf, deny, ensure: start, list, force, touch: () => { lastAct = Date.now(); }, subscribe: (f) => { subs.add(f); return () => subs.delete(f); }, status: () => ({ ready: ready(), started, err: serr }), lostMsg: () => toast('🔒 লক নবায়ন হয়নি (নেটওয়ার্ক?) — জানালা বন্ধ করে আবার নাম নির্বাচন করুন') };
+        })();
+        window.mfLock = mfLock;
+
+        // 🆕 [v16.5.99] ডাবল-এন্ট্রি সতর্কতা: একই সদস্য + একই দিন + একই পরিমাণ আগে থেকে থাকলে সংরক্ষণের আগে নিশ্চিতকরণ চায় (লকের পরিপূরক)।
+        window.mfDup = (() => {
+            const near = (a, b) => Math.abs(Number(a) - Number(b)) < 0.005;
+            const find = (o) => {
+                const A = ((o && o.amounts) || []).map(Number).filter(x => x > 0);
+                if (!o || !o.memberId || !o.date || !A.length) return null;
+                const rows = [];
+                (state.monthly || []).forEach(r => { if (r.memberId === o.memberId && r.date === o.date && Number(r.amount) > 0 && r.month !== o.skipMonthKey && r.id !== o.skipId) rows.push({ kind: 'মাসিক', amount: Number(r.amount), collector: r.collector || '', month: r.month || '' }); });
+                (state.yearly || []).forEach(r => { if (r.memberId === o.memberId && r.date === o.date && Number(r.amount) > 0 && r.id !== o.skipId) rows.push({ kind: 'বার্ষিক/এককালীন', amount: Number(r.amount), collector: r.collector || '', month: '' }); });
+                if (!rows.length) return null;
+                const sum = rows.reduce((s, r) => s + r.amount, 0);
+                const hit = rows.find(r => A.some(a => near(a, r.amount))) || (rows.length > 1 && A.some(a => near(a, sum)) ? rows[0] : null);
+                return hit ? Object.assign({ count: rows.length }, hit) : null;
+            };
+            const ask = (name, date, d, onYes) => {
+                const old = document.getElementById('mf-dup-ask'); if (old) old.remove();
+                const ov = document.createElement('div'); ov.id = 'mf-dup-ask';
+                ov.style.cssText = 'position:fixed;inset:0;z-index:2147483100;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:14px;';
+                const dt = (typeof fmtDate === 'function') ? fmtDate(date) : date;
+                ov.innerHTML = '<div style="background:var(--paper-raised,#fff);color:inherit;border-radius:16px;padding:16px;max-width:440px;width:100%;border:2px solid #b26a00;font-size:15px;line-height:1.6;"><h3 style="margin:0 0 8px;">⚠️ সম্ভাব্য ডাবল এন্ট্রি</h3><p style="margin:0 0 10px;">"<b>' + escapeHtml(name || '') + '</b>" নামে <b>' + escapeHtml(dt) + '</b> তারিখে ইতিমধ্যে <b>' + escapeHtml(d.kind) + ' ' + escapeHtml(fmtMoney(d.amount)) + '</b>' + (d.month ? ' (' + escapeHtml(d.month) + ')' : '') + (d.collector ? ' — সংগ্রাহক: ' + escapeHtml(d.collector) : '') + ' এন্ট্রি আছে। আবার একই টাকা ভুলে দেওয়া হচ্ছে না তো?</p><div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;"><button type="button" class="btn btn-outline" id="dup-yes">হ্যাঁ, তবুও সংরক্ষণ করুন</button><button type="button" class="btn btn-primary" id="dup-no">না, ফিরে যাই</button></div></div>';
+                document.body.appendChild(ov);
+                document.getElementById('dup-no').onclick = () => ov.remove();
+                document.getElementById('dup-yes').onclick = () => { ov.remove(); try { onYes(); } catch (e) { console.error(e); } };
+                try { document.getElementById('dup-no').focus(); } catch (e) { }
+            };
+            return { find, ask };
+        })();
+        window.__mfLockIds = new Set(['smc-member']);
+
+        const initMemberPicker = (idPrefix, onSelect, opts) => {
+            const _lockOn = !!((opts && opts.lock) || (window.__mfLockIds && window.__mfLockIds.has(idPrefix)));
+            if (_lockOn && window.mfLock) window.mfLock.ensure();
             const searchEl = document.getElementById(`${idPrefix}-search`);
             const hiddenEl = document.getElementById(idPrefix);
             const listEl = document.getElementById(`${idPrefix}-list`);
@@ -10331,21 +10541,31 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                 if (!matches.length) {
                     listEl.innerHTML = `<div class="mp-item mp-empty">কোনো সদস্য পাওয়া যায়নি</div>`;
                 } else {
-                    listEl.innerHTML = matches.map(m => `
-                    <div class="mp-item" data-mp-id="${m.id}">
-                      <div class="mp-item-name">${escapeHtml(m.name)}</div>
-                      <div class="mp-item-sub small muted">${m.mobile ? escapeHtml(m.mobile) : 'মোবাইল নেই'}${m.father ? ' · ' + escapeHtml(m.father) : ''}</div>
+                    if (_lockOn && window.mfLock) window.mfLock.ensure();
+                    listEl.innerHTML = matches.map(m => { const _hl = (_lockOn && window.mfLock) ? window.mfLock.holderOf(m.id) : null; return `
+                    <div class="mp-item" data-mp-id="${m.id}"${_hl ? ' style="opacity:.55;"' : ''}>
+                      <div class="mp-item-name">${_hl ? '🔒 ' : ''}${escapeHtml(m.name)}</div>
+                      <div class="mp-item-sub small muted">${_hl ? 'এখন ' + escapeHtml(_hl.by || _hl.email || 'অন্যজন') + ' এন্ট্রি করছেন' : (m.mobile ? escapeHtml(m.mobile) : 'মোবাইল নেই') + (m.father ? ' · ' + escapeHtml(m.father) : '')}</div>
                     </div>
-                  `).join('');
+                  `; }).join('');
                     listEl.querySelectorAll('[data-mp-id]').forEach(item => {
                         item.addEventListener('mousedown', ev => {
                             ev.preventDefault();
                             const m = memberById(item.dataset.mpId);
-                            hiddenEl.value = m.id;
-                            searchEl.value = m.name;
-                            infoEl.textContent = mpInfoLine(m);
-                            listEl.style.display = 'none';
-                            if (onSelect) onSelect(m);
+                            const _pick = () => {
+                                hiddenEl.value = m.id;
+                                searchEl.value = m.name;
+                                infoEl.textContent = mpInfoLine(m);
+                                listEl.style.display = 'none';
+                                if (onSelect) onSelect(m);
+                            };
+                            if (_lockOn && window.mfLock) {
+                                listEl.style.display = 'none'; infoEl.textContent = '⏳ নাম লক করা হচ্ছে…';
+                                window.mfLock.acquire(m.id, m.name).then(r => {
+                                    if (r.ok) _pick();
+                                    else { hiddenEl.value = ''; searchEl.value = ''; infoEl.textContent = ''; window.mfLock.deny(r, m.name, m.id); }
+                                });
+                            } else _pick();
                         });
                     });
                 }
@@ -11025,14 +11245,14 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                 month: { label: 'মাস', thClass: 'month-cell', td: (r) => `<td class="month-cell">${escapeHtml(r.month)}</td>` },
                 date: { label: 'তারিখ', thClass: 'date-cell', td: (r) => `<td class="date-cell">${r.date ? fmtDate(r.date) : '—'}</td>` },
                 amount: { label: 'পরিমাণ', thClass: 'num', td: (r) => `<td class="num">${fmtMoney(r.amount)}</td>` },
-                method: { label: 'মেথড', td: (r) => `<td class="muted">${escapeHtml(r.method || '—')}</td>` },
+                method: { label: 'মেথড', td: (r) => `<td class="muted">${escapeHtml(r.method || '—')}${window.mfSentTag ? window.mfSentTag(r.id) : ''}</td>` },
                 rno: { label: 'রিসিপ্ট নং', td: (r) => window.mfRnoTd(r.id, r.amount, 'muted', true) },
                 collector: { label: 'সংগ্রাহক', td: (r) => `<td class="muted">${escapeHtml(r.collector || '—')}</td>` }
             };
             const _mdYearlyCells = {
                 date: { label: 'তারিখ', thClass: 'date-cell', td: (r) => `<td class="date-cell">${fmtDate(r.date)}</td>` },
                 amount: { label: 'পরিমাণ', thClass: 'num', td: (r) => `<td class="num">${fmtMoney(r.amount)}</td>` },
-                method: { label: 'মেথড', td: (r) => `<td class="muted">${escapeHtml(r.method || '—')}</td>` },
+                method: { label: 'মেথড', td: (r) => `<td class="muted">${escapeHtml(r.method || '—')}${window.mfSentTag ? window.mfSentTag(r.id) : ''}</td>` },
                 rno: { label: 'রিসিপ্ট নং', td: (r) => window.mfRnoTd(r.id, r.amount, 'muted', true) },
                 // 🆕 বার্ষিক/এককালীন অনুদানেও "সংগ্রাহক" কলাম যোগ করা হলো (আগে ছিল না)
                 collector: { label: 'সংগ্রাহক', td: (r) => `<td class="muted">${escapeHtml(r.collector || '—')}</td>` },
@@ -11051,8 +11271,8 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                 const bodyHtml = rows.map(r => `<tr>${visibleKeys.map(k => cells[k] ? cells[k].td(r) : '').join('')}</tr>`).join('');
                 return { visibleKeys, theadHtml, bodyHtml };
             };
-            const _mdMonthly = _mdBuildTable('my-donations-monthly', window.MY_DONATIONS_MONTHLY_DEFAULT_COLUMNS, _mdMonthlyCells, monthly);
-            const _mdYearly = _mdBuildTable('my-donations-yearly', window.MY_DONATIONS_YEARLY_DEFAULT_COLUMNS, _mdYearlyCells, yearly);
+            const _mdMonthly = _mdBuildTable('member-details-monthly-yearly', window.MEMBER_DETAILS_MONTHLY_YEARLY_DEFAULT_COLUMNS, _mdMonthlyCells, monthly);
+            const _mdYearly = _mdBuildTable('member-details-monthly-yearly', window.MEMBER_DETAILS_MONTHLY_YEARLY_DEFAULT_COLUMNS, _mdYearlyCells, yearly);
 
             return `
               <div class="section-title">🎁 আমার অনুদান</div>
@@ -11075,14 +11295,14 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
               <div class="card" style="margin-bottom:16px;">
                 <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
                   <strong style="font-family:var(--font-display);color:var(--emerald-900);">📅 মাসিক অনুদান (${monthly.length} টি — কোন কোন মাসে দিয়েছেন)</strong>
-                  ${columnSettingsButtonHtml('my-donations-monthly')}
+                  ${columnSettingsButtonHtml('member-details-monthly-yearly')}
                 </div>
                 ${monthly.length ? `<div class="table-wrap donation-table-wrap" style="margin-top:10px;"><table style="width:100%;"><thead><tr>${_mdMonthly.theadHtml}</tr></thead><tbody>${_mdMonthly.bodyHtml}</tbody><tfoot><tr style="background:var(--gold-100);"><td style="font-weight:800;color:var(--emerald-900);text-align:center;padding:12px;letter-spacing:.3px;" colspan="${_mdMonthly.visibleKeys.length || 1}">মোট: ${fmtMoney(monthlyTotal)}</td></tr></tfoot></table></div>` : '<div class="small muted" style="margin-top:8px;">কোনো মাসিক অনুদান রেকর্ড নেই।</div>'}
               </div>
               <div class="card">
                 <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
                   <strong style="font-family:var(--font-display);color:var(--emerald-900);">🎁 বার্ষিক / এককালীন অনুদান (${yearly.length} টি)</strong>
-                  ${columnSettingsButtonHtml('my-donations-yearly')}
+                  
                 </div>
                 ${yearly.length ? `<div class="table-wrap donation-table-wrap" style="margin-top:10px;"><table style="width:100%;"><thead><tr>${_mdYearly.theadHtml}</tr></thead><tbody>${_mdYearly.bodyHtml}</tbody></table></div>` : '<div class="small muted" style="margin-top:8px;">কোনো বার্ষিক/এককালীন অনুদান রেকর্ড নেই।</div>'}
               </div>
@@ -11108,14 +11328,11 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
         ];
         // 🆕 "🎁 আমার অনুদান" ট্যাবের কলাম-সেটিংস বাটন ও রিসাইজ-হ্যান্ডেল ওয়্যারিং
         const afterMyInfoRender = () => {
-            const btnM = document.getElementById('btn-col-settings-my-donations-monthly');
+            // 🆕 [v16.5.102] "আমার অনুদান" টেবিলও এডমিনের সাজানো সদস্য-বিবরণ (member-details-monthly-yearly) কনফিগ মানে — এডমিন যেভাবে সাজাবে ইউজারও ঠিক সেভাবে দেখবে
+            const btnM = document.getElementById('btn-col-settings-member-details-monthly-yearly');
             if (btnM) btnM.addEventListener('click', () =>
-                openColumnSettingsModal('my-donations-monthly', window.MY_DONATIONS_MONTHLY_DEFAULT_COLUMNS));
-            const btnY = document.getElementById('btn-col-settings-my-donations-yearly');
-            if (btnY) btnY.addEventListener('click', () =>
-                openColumnSettingsModal('my-donations-yearly', window.MY_DONATIONS_YEARLY_DEFAULT_COLUMNS));
-            wireColumnResizeHandles('my-donations-monthly', window.MY_DONATIONS_MONTHLY_DEFAULT_COLUMNS, document.getElementById('main'));
-            wireColumnResizeHandles('my-donations-yearly', window.MY_DONATIONS_YEARLY_DEFAULT_COLUMNS, document.getElementById('main'));
+                openColumnSettingsModal('member-details-monthly-yearly', window.MEMBER_DETAILS_MONTHLY_YEARLY_DEFAULT_COLUMNS));
+            wireColumnResizeHandles('member-details-monthly-yearly', window.MEMBER_DETAILS_MONTHLY_YEARLY_DEFAULT_COLUMNS, document.getElementById('main'));
         };
 
         // 🆕 সাধারণ ভিউ পারমিশনহীন ইউজার সরাসরি URL/স্টেট মেনিপুলেশন করে সংরক্ষিত ট্যাবে
@@ -12080,8 +12297,8 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             host.appendChild(ov);
             const list = ov.querySelector('#dmx-fwd-list');
             const draw = (q) => {
-                const qq = String(q || '').trim().toLowerCase();
-                const rows = users.filter(u => !qq || String(u.displayName || u.email).toLowerCase().includes(qq));
+                const qq = String(q || '').trim().normalize('NFC').replace(/[\u200c\u200d]/g, '').toLowerCase();
+                const rows = users.filter(u => !qq || String(u.displayName || u.email).normalize('NFC').replace(/[\u200c\u200d]/g, '').toLowerCase().includes(qq));
                 list.innerHTML = rows.length ? rows.map(u => `<button type="button" class="fw-row" data-fw="${escapeHtml(u.email)}"><span>👤</span><span><b>${escapeHtml(u.displayName || String(u.email).split('@')[0])}</b><br><span class="small muted">${escapeHtml(u.email)}</span></span></button>`).join('')
                     : '<div class="small muted" style="padding:16px;text-align:center;">কাউকে পাওয়া যায়নি</div>';
             };
@@ -13104,9 +13321,76 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
         // 🆕 এডমিন "➕ নতুন কলাম যোগ করুন" দিয়ে members টেবিলে কাস্টম কলাম বানালে,
         // এই ফর্মেও (যদি এই ইউজারের জন্য কলামটি hidden/গোপনীয় না থাকে) একই নামে
         // ইনপুট-ফিল্ড স্বয়ংক্রিয়ভাবে যোগ হবে — এডমিন প্যানেলের প্যাটার্নের সাথে সামঞ্জস্যপূর্ণ।
+
+        // 🆕 [v16.5.97] আইডি-নং সাজেশন: নতুন সদস্যে "সর্বশেষ আইডির পরের নম্বর" বসে; সম্পাদনায় ফাঁকা নম্বরগুলো ক্লিকযোগ্য সাজেশন হিসেবে দেখায়; ডুপ্লিকেট নম্বরে সতর্কতা
+        // 🆕 [v16.5.102] সদস্য-আইডি ফরম্যাট: প্রিফিক্স + সংখ্যা (যেমন MP-023)। প্রিফিক্স/বিভাজক/অঙ্ক-সংখ্যা/বাংলা-অঙ্ক সেটিংস থেকে বদলানো যায় (settings.idFmt)।
+        // পুরনো আইডি (শুধু সংখ্যা বা অন্য প্রিফিক্স) অক্ষত থাকে; মিল খোঁজা/ফাঁকা-নম্বর সাজেশন সংখ্যা ধরে হয়, তাই "MP-023", "23", "০২৩" একই নম্বর।
+        const idFmtCfg = () => {
+            const s = (state.settings && state.settings.idFmt) || {};
+            const prefix = String(s.prefix == null ? 'MP' : s.prefix).replace(/[\d০-৯\s\-_.\/]/g, '').slice(0, 8);
+            const sepRaw = s.sep == null ? '-' : String(s.sep);
+            let width = parseInt(s.width, 10); if (!(width >= 0 && width <= 8)) width = 3;
+            return { prefix, sep: prefix ? (['-', '_', '.', '/', ''].indexOf(sepRaw) >= 0 ? sepRaw : '-') : '', width, bn: s.bn === true, auto: s.auto !== false };
+        };
+        const idParse = (raw) => {
+            const t = bnToEnDigits(String(raw == null ? '' : raw)).normalize('NFC').trim(); if (!t) return null;
+            const m = t.match(/^([^\d]*?)[\s\-_.\/]*(\d+)$/); if (!m) return null;
+            const n = parseInt(m[2], 10); if (!(n > 0) || n >= 100000) return null;
+            return { n, prefix: m[1].replace(/[\s\-_.\/]+$/, '').trim(), digits: m[2] };
+        };
+        const idFormat = (n, cfgIn) => { const c = cfgIn || idFmtCfg(); let s = String(n); while (s.length < c.width) s = '0' + s; s = c.prefix + c.sep + s; return c.bn ? toBengaliNum(s) : s; };
+        const idCanon = (raw) => { const t = String(raw == null ? '' : raw).trim(); if (!t) return ''; const p = idParse(t), c = idFmtCfg(); return (p && !p.prefix && c.auto && c.prefix) ? idFormat(p.n, c) : t; };
+        const idSame = (a, b) => { const x = idParse(a), y = idParse(b); if (!x || !y) return String(a == null ? '' : a).trim() === String(b == null ? '' : b).trim(); return x.n === y.n && (!x.prefix || !y.prefix || x.prefix.toUpperCase() === y.prefix.toUpperCase()); };
+        const memIdInfo = (excludeId) => {
+            const used = new Map(); let max = 0;
+            (state.members || []).forEach(x => {
+                if (x.id === excludeId) return;
+                const p = idParse(x.idNumber); if (!p) return;
+                if (!used.has(p.n)) used.set(p.n, x);
+                if (p.n > max) max = p.n;
+            });
+            const gaps = []; for (let i = 1; i < max && gaps.length < 300; i++) if (!used.has(i)) gaps.push(i);
+            return { used, max, next: max + 1, gaps, width: 0, bn: false };
+        };
+        const memIdFmt = (n) => idFormat(n);
+        window.mfMemIdInfo = memIdInfo; window.mfMemIdFmt = memIdFmt;
+        window.mfIdFmtCfg = idFmtCfg; window.mfIdParse = idParse; window.mfIdFormat = idFormat; window.mfIdCanon = idCanon; window.mfIdSame = idSame;
+        window.mfIdWire = (m) => {
+            const inp = document.getElementById('f-idNumber'); if (!inp) return;
+            const info = memIdInfo(m && m.id);
+            if (!m && !inp.value.trim()) inp.value = memIdFmt(info.next, info);
+            const box = document.createElement('div'); box.id = 'f-id-sug'; box.className = 'small'; box.style.cssText = 'margin:-4px 0 12px;line-height:2;';
+            const fld = inp.closest('.field') || inp.parentNode; fld.insertAdjacentElement('afterend', box);
+            let showAll = false;
+            const chip = (n) => '<button type="button" class="btn btn-outline btn-sm" data-idpick="' + memIdFmt(n, info) + '" style="padding:2px 10px;min-height:32px;margin:0 4px 4px 0;">' + memIdFmt(n, info) + '</button>';
+            const render = () => {
+                const _pp = idParse(inp.value); let html = '';
+                if (_pp) { const o = info.used.get(_pp.n); if (o) html += '<div style="color:#b3261e;font-weight:600;">⚠️ এই নম্বর (' + escapeHtml(inp.value.trim()) + ') আগে থেকেই "' + escapeHtml(o.name || '') + '"-এর — অন্য নম্বর নিন।</div>'; }
+                html += '<div>💡 পরবর্তী নতুন নম্বর: ' + chip(info.next) + '</div>';
+                if (info.gaps.length) { const list = showAll ? info.gaps : info.gaps.slice(0, 12); html += '<div>🕳️ ফাঁকা নম্বর (' + toBengaliNum(info.gaps.length) + ' টি — ক্লিক করলে বসবে): ' + list.map(chip).join('') + (info.gaps.length > 12 ? ' <button type="button" class="btn btn-outline btn-sm" data-idall="1" style="padding:2px 10px;min-height:32px;">' + (showAll ? 'কম দেখান' : 'সব দেখান') + '</button>' : '') + '</div>'; }
+                else html += '<div class="muted">কোনো ফাঁকা নম্বর নেই (১ থেকে ' + memIdFmt(info.max, info) + ' পর্যন্ত সব ব্যবহৃত)।</div>';
+                box.innerHTML = html;
+            };
+            box.addEventListener('click', (ev) => {
+                const p = ev.target.closest('[data-idpick]'); if (p) { inp.value = p.dataset.idpick; render(); try { inp.focus(); } catch (e) { } return; }
+                if (ev.target.closest('[data-idall]')) { showAll = !showAll; render(); }
+            });
+            inp.addEventListener('input', render); render();
+        };
+        // সংরক্ষণের আগে: ডুপ্লিকেট হলে নিশ্চিতকরণ; নতুন সদস্যে ঘর খালি থাকলে পরের নম্বর বসানো। false = থামুন
+        window.mfIdPrepare = (m) => {
+            const inp = document.getElementById('f-idNumber'); if (!inp) return true;
+            const info = memIdInfo(m && m.id);
+            if (!m && !inp.value.trim()) inp.value = memIdFmt(info.next, info);
+            { const _c = idCanon(inp.value); if (_c !== inp.value.trim()) inp.value = _c; }   // 🆕 [v16.5.102] "23" লিখলে "MP-023"
+            const _pp = idParse(inp.value);
+            if (_pp) { const o = info.used.get(_pp.n); if (o && !window.confirm('এই আইডি নম্বর আগে থেকেই "' + (o.name || '') + '"-এর। তবুও একই নম্বর রাখবেন?')) return false; }
+            return true;
+        };
+
         const memberFormHtml = (m, config) => `
           <h3>${m ? 'সদস্যের তথ্য সম্পাদনা' : 'নতুন সদস্য যোগ করুন'}</h3>
-          <div class="field"><label>আইডি নং</label><input type="text" id="f-idNumber" value="${escapeHtml(m?.idNumber || '')}" placeholder="যেমন: ০০১"></div>
+          <div class="field"><label>আইডি নং</label><input type="text" id="f-idNumber" value="${escapeHtml(m?.idNumber || '')}" placeholder="যেমন: ${window.mfIdFormat ? window.mfIdFormat(23) : 'MP-023'}"></div>
           <div class="field"><label>নাম *</label><input type="text" id="f-name" value="${escapeHtml(m?.name || '')}" placeholder="যেমন: মো: আলাউদ্দিন সরদার"></div>
           <div class="field"><label>পিতা/স্বামীর নাম</label><input type="text" id="f-father" value="${escapeHtml(m?.father || '')}"></div>
           <div class="field"><label>মোবাইল</label><input type="tel" id="f-mobile" value="${escapeHtml(m?.mobile || '')}" placeholder="01XXX-XXXXXX"></div>
@@ -13138,9 +13422,11 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             const _colConfig = effectiveColumnConfig('members', window.MEMBERS_DEFAULT_COLUMNS);
             openModal(memberFormHtml(m, _colConfig), () => {
                 document.getElementById('f-cancel').onclick = closeModal;
+                try { window.mfIdWire(m); } catch (e) { console.error(e); }
                 document.getElementById('f-save').onclick = () => {
                     const name = document.getElementById('f-name').value.trim();
                     if (!name) { toast('নাম আবশ্যক'); return; }
+                    if (!window.mfIdPrepare(m)) return;
                     const customFields = { ...(m?.customFields || {}) };
                     document.querySelectorAll('.f-custom-field').forEach(inp => {
                         customFields[inp.dataset.customKey] = inp.value.trim();
@@ -13474,14 +13760,14 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
         const universalSearchResults = (rawQuery) => {
             const q = rawQuery.trim();
             if (!q) return [];
-            const needle = bnToEnDigits(q).trim().toLowerCase();
+            const needle = bnToEnDigits(q).trim().normalize('NFC').replace(/[\u200c\u200d]/g, '').toLowerCase();
             const results = [];
             const canSeeAll = previewMode || hasGeneralView();
 
             // ১) মেনু/ট্যাব
             CONFIG.TAB_ORDER.filter(isTabVisibleForCurrentUser).forEach(key => {
                 const label = getTabLabel(key);
-                if (label.toLowerCase().includes(needle)) {
+                if (label.normalize('NFC').replace(/[\u200c\u200d]/g, '').toLowerCase().includes(needle)) {
                     results.push({ icon: CONFIG.TAB_ICONS[key] || '📁', tag: 'মেনু', title: label, sub: 'ট্যাবে যান',
                         action: () => { closeModal(); goToTab(key); } });
                 }
@@ -13498,8 +13784,8 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             }
 
             // ৩) নোটিশ (শিরোনাম/বিবরণ) — সবার জন্য সবসময় দৃশ্যমান
-            (state.notices || []).filter(n => (n.title || '').toLowerCase().includes(needle) || (n.content || '')
-                .toLowerCase().includes(needle)).slice(0, 6).forEach(n => {
+            (state.notices || []).filter(n => (n.title || '').normalize('NFC').replace(/[\u200c\u200d]/g, '').toLowerCase().includes(needle) || (n.content || '')
+                .normalize('NFC').replace(/[\u200c\u200d]/g, '').toLowerCase().includes(needle)).slice(0, 6).forEach(n => {
                 results.push({ icon: '✉', tag: 'নোটিশ', title: n.title || '(শিরোনামহীন)',
                     sub: n.content ? n.content.slice(0, 46) + (n.content.length > 46 ? '…' : '') : 'নোটিশ দেখুন',
                     action: () => { closeModal();
@@ -13508,8 +13794,8 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             });
 
             // ৪) চ্যাট মেসেজ (লেখা বা প্রেরকের নাম) — সবার জন্য সবসময় দৃশ্যমান
-            (state.chat || []).filter(m => (m.text || '').toLowerCase().includes(needle) || (m.displayName || '')
-                .toLowerCase().includes(needle)).slice(0, 6).forEach(m => {
+            (state.chat || []).filter(m => (m.text || '').normalize('NFC').replace(/[\u200c\u200d]/g, '').toLowerCase().includes(needle) || (m.displayName || '')
+                .normalize('NFC').replace(/[\u200c\u200d]/g, '').toLowerCase().includes(needle)).slice(0, 6).forEach(m => {
                 results.push({ icon: '💬', tag: 'চ্যাট', title: (m.text || '').slice(0, 46) + ((m.text || '')
                         .length > 46 ? '…' : ''), sub: (m.displayName || 'অজানা') + ' · চ্যাটে যান',
                     action: () => { closeModal();
@@ -13520,7 +13806,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
 
             // ৫) মাসিক অনুদান (মাস দিয়ে) — শুধু সাধারণ ভিউ পারমিশন থাকলে
             if (canSeeAll) {
-                (state.monthly || []).filter(r => (r.month || '').toLowerCase().includes(needle)).slice(0, 6).forEach(r => {
+                (state.monthly || []).filter(r => (r.month || '').normalize('NFC').replace(/[\u200c\u200d]/g, '').toLowerCase().includes(needle) || (typeof txnMonthLabel === 'function' && String(txnMonthLabel(r.month) || '').normalize('NFC').replace(/[\u200c\u200d]/g, '').toLowerCase().includes(needle)) || (/^\d+$/.test(needle) && String(r.amount || '').includes(needle))).slice(0, 6).forEach(r => {
                     const m = memberById(r.memberId);
                     results.push({ icon: '◐', tag: 'মাসিক', title: (m ? m.name : 'অজানা সদস্য') + ' — ' + r.month,
                         sub: fmtMoney(r.amount) + ' · বিস্তারিত দেখুন',
@@ -13530,8 +13816,8 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                 });
 
                 // ৬) বার্ষিক/এককালীন অনুদান (তারিখ দিয়ে) — শুধু সাধারণ ভিউ পারমিশন থাকলে
-                (state.yearly || []).filter(r => (r.date || '').toLowerCase().includes(needle) || fmtDate(r.date || '')
-                    .toLowerCase().includes(needle)).slice(0, 6).forEach(r => {
+                (state.yearly || []).filter(r => (r.date || '').normalize('NFC').replace(/[\u200c\u200d]/g, '').toLowerCase().includes(needle) || fmtDate(r.date || '')
+                    .normalize('NFC').replace(/[\u200c\u200d]/g, '').toLowerCase().includes(needle) || (/^\d+$/.test(needle) && String(r.amount || '').includes(needle))).slice(0, 6).forEach(r => {
                     const m = memberById(r.memberId);
                     results.push({ icon: '◑', tag: 'বার্ষিক', title: (m ? m.name : 'অজানা সদস্য') + ' — ' + fmtDate(r
                             .date), sub: fmtMoney(r.amount) + ' · বিস্তারিত দেখুন',
@@ -13542,7 +13828,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             }
 
             // ৭) আমার অনুদান — নিজের রেকর্ড থাকলে ও "আমার অনুদান"/"donations" শব্দটি মিললে
-            if (('আমার অনুদান'.toLowerCase().includes(needle) || 'donations'.includes(needle)) && findMyMemberRecord()) {
+            if (('আমার অনুদান'.normalize('NFC').replace(/[\u200c\u200d]/g, '').toLowerCase().includes(needle) || 'donations'.includes(needle)) && findMyMemberRecord()) {
                 results.unshift({ icon: '🎁', tag: 'আমার', title: 'আমার অনুদান', sub: 'নিজের অনুদানের বিবরণ দেখুন',
                     action: () => { closeModal(); goToTab('donations'); } });
             }
@@ -13649,14 +13935,14 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
         const _mdCellsMonthly = {
             month: { label: 'মাস', td: (r) => `<td>${escapeHtml(r.month)}</td>` },
             amount: { label: 'পরিমাণ', thClass: 'num', td: (r) => `<td class="num">${fmtMoney(r.amount)}</td>` },
-            method: { label: 'মেথড', td: (r) => `<td class="muted">${escapeHtml(r.method)}</td>` },
+            method: { label: 'মেথড', td: (r) => `<td class="muted">${escapeHtml(r.method)}${window.mfSentTag ? window.mfSentTag(r.id) : ''}</td>` },
             collector: { label: 'সংগ্রাহক', td: (r) => `<td class="muted">${escapeHtml(r.collector)}</td>` },
             rno: { label: 'রিসিপ্ট নং', td: (r) => { const mp = (state.settings && state.settings.receiptNoMap && state.settings.receiptNoMap.assigned) || {}; return `<td class="muted">${escapeHtml(mp[r.id] || '—')}${(Number(r.amount) > 0 && window.mfSentHtml) ? window.mfSentHtml(r.id) : ''}</td>`; } }
         };
         const _mdCellsYearly = {
             date: { label: 'তারিখ', td: (r) => `<td>${fmtDate(r.date)}</td>` },
             amount: { label: 'পরিমাণ', thClass: 'num', td: (r) => `<td class="num">${fmtMoney(r.amount)}</td>` },
-            method: { label: 'মেথড', td: (r) => `<td class="muted">${escapeHtml(r.method)}</td>` },
+            method: { label: 'মেথড', td: (r) => `<td class="muted">${escapeHtml(r.method)}${window.mfSentTag ? window.mfSentTag(r.id) : ''}</td>` },
             collector: { label: 'সংগ্রাহক', td: (r) => `<td class="muted">${escapeHtml(r.collector)}</td>` },
             rno: { label: 'রিসিপ্ট নং', td: (r) => { const mp = (state.settings && state.settings.receiptNoMap && state.settings.receiptNoMap.assigned) || {}; return `<td class="muted">${escapeHtml(mp[r.id] || '—')}${(Number(r.amount) > 0 && window.mfSentHtml) ? window.mfSentHtml(r.id) : ''}</td>`; } },
             remarks: { label: 'মন্তব্য', td: (r) => `<td class="muted small">${escapeHtml(r.remarks)}</td>` }
@@ -13922,7 +14208,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                 amount: { label: 'পরিমাণ', thClass: 'num', td: (r) => `<td class="num">${r.amount ? fmtMoney(r.amount) : '—'}</td>` },
                 month: { label: 'মাস', td: (r) => `<td>${escapeHtml(r.month || '—')}</td>` },
                 date: { label: 'তারিখ', thClass: 'date-cell', td: (r) => `<td class="date-cell">${r.date ? fmtDate(r.date) : '—'}</td>` },
-                method: { label: 'মেথড', td: (r) => `<td class="muted small">${r.method ? escapeHtml(r.method) : '—'}</td>` },
+                method: { label: 'মেথড', td: (r) => `<td class="muted small">${r.method ? escapeHtml(r.method) : '—'}${window.mfSentTag ? window.mfSentTag(r.id) : ''}</td>` },
                 rno: { label: 'রিসিপ্ট নং', td: (r) => { const mp = (state.settings && state.settings.receiptNoMap && state.settings.receiptNoMap.assigned) || {}; return `<td class="muted small">${escapeHtml((r.entryId && mp[r.entryId]) || '—')}${(r.entryId && window.mfSentHtml) ? window.mfSentHtml(r.entryId) : ''}</td>`; } },   // 🔧 [v16.5.65]
                 collector: { label: 'সংগ্রাহক', td: (r) => `<td class="muted small">${r.collector ? escapeHtml(r.collector) : '—'}</td>` },
                 actions: { label: 'কার্যক্রম', thClass: 'no-print act-col', td: (r) => `<td class="no-print act-col">${r.memberId ? detailsBtnHtml(r.memberId) + permEmailBtn(r.memberId, 'monthly', r.month) : '—'}</td>` }
@@ -14178,7 +14464,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
 
         const upsertMonthly = (memberId, monthKey, field, value) => {
             let entry = getMonthlyEntry(memberId, monthKey);
-            if (!entry) { entry = { id: uid(), memberId, month: monthKey, amount: 0, collector: '', method: '', date: '' };
+            if (!entry) { entry = { id: uid(), memberId, month: monthKey, amount: 0, collector: '', method: '', date: '', addedByEmail: String((window.currentUser && window.currentUser.email) || '').toLowerCase() };
                 state.monthly.push(entry); }
             entry[field] = field === 'amount' ? (Number(value) || 0) : value;
             saveState();
@@ -14211,13 +14497,15 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
 
         const openMonthlyQuickForm = () => {
             openModal(monthlyQuickFormHtml(), () => {
-                initMemberPicker('f-member');
+                initMemberPicker('f-member', null, { lock: true });
                 document.getElementById('f-cancel').onclick = closeModal;
                 document.getElementById('f-save').onclick = () => {
                     const memberId = document.getElementById('f-member').value;
                     const amount = Number(document.getElementById('f-amount').value) || 0;
                     if (!memberId) { toast('সদস্য নির্বাচন করুন'); return; }
+                    if (window.mfLock && !window.mfLock.canSave(memberId)) { window.mfLock.lostMsg(); return; }
                     const m = memberById(memberId);
+                    if (!window.__mfDupOk && window.mfDup) { const _dd = window.mfDup.find({ memberId: memberId, amounts: [amount], date: document.getElementById('f-date').value || todayISO(), skipMonthKey: currentMonth }); if (_dd) { window.mfDup.ask(m ? m.name : '', document.getElementById('f-date').value || todayISO(), _dd, () => { window.__mfDupOk = true; try { document.getElementById('f-save').onclick(); } finally { window.__mfDupOk = false; } }); return; } }
                     upsertMonthly(memberId, currentMonth, 'amount', amount);
                     upsertMonthly(memberId, currentMonth, 'date', document.getElementById('f-date').value);
                     upsertMonthly(memberId, currentMonth, 'method', document.getElementById('f-method').value);
@@ -14373,7 +14661,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                 father: { label: 'পিতা/স্বামী', td: (r) => { const m = memberById(r.memberId); return `<td class="muted small">${escapeHtml(m ? m.father : '')}</td>`; } },
                 mobile: { label: 'মোবাইল', td: (r) => { const m = memberById(r.memberId); return `<td class="muted small">${m ? mobileLink(m.mobile) : ''}</td>`; } },
                 amount: { label: 'পরিমাণ', thClass: 'num', td: (r) => `<td class="num">${fmtMoney(r.amount)}</td>` },
-                method: { label: 'মেথড', td: (r) => `<td class="muted small">${escapeHtml(r.method)}</td>` },
+                method: { label: 'মেথড', td: (r) => `<td class="muted small">${escapeHtml(r.method)}${window.mfSentTag ? window.mfSentTag(r.id) : ''}</td>` },
                 rno: { label: 'রিসিপ্ট নং', td: (r) => window.mfRnoTd(r.id, r.amount, 'muted small') },
                 collector: { label: 'সংগ্রাহক', td: (r) => `<td class="muted small">${escapeHtml(r.collector)}</td>` },
                 remarks: { label: 'মন্তব্য', td: (r) => `<td class="muted small">${escapeHtml(r.remarks)}</td>` },
@@ -14430,12 +14718,14 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
         const openYearlyForm = (entryId) => {
             const r = entryId ? state.yearly.find(x => x.id === entryId) : null;
             openModal(yearlyFormHtml(r), () => {
-                initMemberPicker('f-member');
+                initMemberPicker('f-member', null, { lock: !r });
                 document.getElementById('f-cancel').onclick = closeModal;
                 document.getElementById('f-save').onclick = () => {
                     const memberId = document.getElementById('f-member').value;
                     const amount = Number(document.getElementById('f-amount').value) || 0;
                     if (!memberId) { toast('সদস্য নির্বাচন করুন'); return; }
+                    if (r) { const _nd = document.getElementById('f-date').value || todayISO(); if (Number(r.amount) !== amount || r.date !== _nd) { if (!window.__mfDupOk && window.mfDup) { const _dd = window.mfDup.find({ memberId: memberId, amounts: [amount], date: _nd, skipId: r.id }); if (_dd) { window.mfDup.ask((memberById(memberId) || {}).name, _nd, _dd, () => { window.__mfDupOk = true; try { document.getElementById('f-save').onclick(); } finally { window.__mfDupOk = false; } }); return; } } } }
+                    if (!r) { if (window.mfLock && !window.mfLock.canSave(memberId)) { window.mfLock.lostMsg(); return; } if (!window.__mfDupOk && window.mfDup) { const _dd = window.mfDup.find({ memberId: memberId, amounts: [amount], date: document.getElementById('f-date').value || todayISO() }); if (_dd) { window.mfDup.ask((memberById(memberId) || {}).name, document.getElementById('f-date').value || todayISO(), _dd, () => { window.__mfDupOk = true; try { document.getElementById('f-save').onclick(); } finally { window.__mfDupOk = false; } }); return; } } }
                     const m = memberById(memberId);
                     const data = { memberId, date: document.getElementById('f-date').value || todayISO(), amount,
                         method: document.getElementById('f-method').value, collector: document.getElementById(
@@ -14451,9 +14741,11 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                         addActivityLog('add', 'yearly', memberId,
                             `"${m ? m.name : 'অজানা'}" — ${fmtMoney(amount)} বার্ষিক অনুদান যোগ`);
                         toast('নতুন এন্ট্রি যোগ করা হয়েছে');
+                        window.__mfNewYearlyId = ne.id;
                     }
                     closeModal();
                     renderMain();
+                    if (window.__mfNewYearlyId) { const _id = window.__mfNewYearlyId; window.__mfNewYearlyId = null; try { if (window.mfYearlyShare && Number(amount) > 0) window.mfYearlyShare(_id); } catch (er) { console.error(er); } }
                 };
             });
         };
@@ -14636,8 +14928,8 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                 .createdAt || 0));
             let filtered = all;
             if (noticeSearch.trim()) {
-                const q = noticeSearch.trim().toLowerCase();
-                filtered = all.filter(n => (n.title || '').toLowerCase().includes(q) || (n.content || '').toLowerCase()
+                const q = noticeSearch.trim().normalize('NFC').replace(/[\u200c\u200d]/g, '').toLowerCase();
+                filtered = all.filter(n => (n.title || '').normalize('NFC').replace(/[\u200c\u200d]/g, '').toLowerCase().includes(q) || (n.content || '').normalize('NFC').replace(/[\u200c\u200d]/g, '').toLowerCase()
                     .includes(q));
             }
             return `
@@ -14660,6 +14952,11 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                       <span class="n-status">${isOpen ? '▾' : '▸'}</span>
                       <span class="n-title">${escapeHtml(n.title || '(শিরোনামহীন)')}${!isOpen ? `<span class="n-preview">${escapeHtml(preview)}</span>` : ''}</span>
                       <span class="n-date">${dateStr}</span>
+                      <div class="n-actions no-print">
+                        <button class="btn btn-outline btn-sm" data-copy-notice="${n.id}" title="নোটিশ কপি করুন">📋</button>
+                        <button class="btn btn-outline btn-sm" data-jpg-notice="${n.id}" title="জেপিজি এক্সপোর্ট">🖼️</button>
+                        <button class="btn btn-outline btn-sm" data-print-notice="${n.id}" title="প্রিন্ট / PDF">🖨️</button>
+                      </div>
                     </div>
                     <div class="notice-body">
                       ${n.imageUrl ? `<div class="n-image"><img src="${escapeHtml(toDirectImageUrl(n.imageUrl))}" alt="নোটিশের ছবি" data-preview-image="${escapeHtml(n.imageUrl)}" style="cursor:zoom-in;max-width:100%;border-radius:8px;margin-bottom:10px;" title="বড় করে দেখতে ক্লিক করুন"><div class="no-print" style="margin:-4px 0 10px;"><button type="button" class="btn btn-outline btn-sm" data-dl-image="${escapeHtml(n.imageUrl)}" data-dl-name="${escapeHtml(n.title || 'ছবি')}" title="ছবিটি ডাউনলোড করুন">⬇️ ফাইল ডাউনলোড</button></div></div>` : ''}
@@ -14685,8 +14982,39 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                     renderMain();
                 });
             });
-            // 🆕 [অনুরোধ] ইউজার-প্যানেলে নোটিশের জেপিজি এক্সপোর্ট, প্রিন্ট ও কপি বাটন সরিয়ে ফেলা হয়েছে —
-            // তাই সংশ্লিষ্ট ওয়্যারিংও (data-jpg-notice/data-print-notice/data-copy-notice) বাদ দেওয়া হলো।
+            // 🆕 [v16.5.103] নোটিশে কপি / জেপিজি / প্রিন্ট(PDF) বাটন ফিরেছে — বিশেষ ঘোষণার মতোই
+            document.querySelectorAll('[data-jpg-notice]').forEach(b => {
+                b.addEventListener('click', e => { e.stopPropagation(); exportNoticeAsImage(b.dataset.jpgNotice); });
+            });
+            document.querySelectorAll('[data-print-notice]').forEach(b => {
+                b.addEventListener('click', e => { e.stopPropagation(); printSingleNotice(b.dataset.printNotice); });
+            });
+            document.querySelectorAll('[data-copy-notice]').forEach(b => {
+                b.addEventListener('click', async e => {
+                    e.stopPropagation();
+                    const n = (state.notices || []).find(x => x.id === b.dataset.copyNotice);
+                    if (!n) return;
+                    const dateStr = n.date ? fmtDate(n.date) : (n.createdAt ? fmtDate(n.createdAt) : '');
+                    const parts = [n.title || ''];
+                    if (dateStr) parts.push('📅 ' + dateStr);
+                    if (n.content) parts.push(n.content);
+                    if (n.imageUrl) parts.push('🖼️ ছবি: ' + toDirectImageUrl(n.imageUrl));
+                    const fullText = parts.join('\n\n');
+                    try {
+                        if (navigator.clipboard && navigator.clipboard.writeText) { await navigator.clipboard.writeText(fullText); }
+                        else { throw new Error('clipboard API unavailable'); }
+                        toast('📋 নোটিশ কপি করা হয়েছে');
+                    } catch (err) {
+                        try {
+                            const ta = document.createElement('textarea');
+                            ta.value = fullText; ta.style.position = 'fixed'; ta.style.opacity = '0';
+                            document.body.appendChild(ta); ta.focus(); ta.select();
+                            document.execCommand('copy'); document.body.removeChild(ta);
+                            toast('📋 নোটিশ কপি করা হয়েছে');
+                        } catch (err2) { console.error('Notice copy failed', err2); toast('❌ কপি করা যায়নি'); }
+                    }
+                });
+            });
             // 🆕 [নোটিশ-ছবি] নোটিশের ছবিতে ক্লিক করলে বড় করে প্রিভিউ দেখানো
             document.querySelectorAll('[data-preview-image]').forEach(img => {
                 img.addEventListener('click', e => { e.stopPropagation();
@@ -14708,8 +15036,8 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                 .date || a.createdAt || 0));
             let filtered = all;
             if (announcementSearch.trim()) {
-                const q = announcementSearch.trim().toLowerCase();
-                filtered = all.filter(n => (n.title || '').toLowerCase().includes(q) || (n.content || '').toLowerCase()
+                const q = announcementSearch.trim().normalize('NFC').replace(/[\u200c\u200d]/g, '').toLowerCase();
+                filtered = all.filter(n => (n.title || '').normalize('NFC').replace(/[\u200c\u200d]/g, '').toLowerCase().includes(q) || (n.content || '').normalize('NFC').replace(/[\u200c\u200d]/g, '').toLowerCase()
                     .includes(q));
             }
             return `
@@ -14822,9 +15150,9 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             let logs = state.activityLog || [];
             if (logActionFilter !== 'all') logs = logs.filter(l => l.action === logActionFilter);
             if (logTargetFilter !== 'all') logs = logs.filter(l => l.targetType === logTargetFilter);
-            if (logSearch.trim()) { const q = logSearch.trim().toLowerCase();
-                logs = logs.filter(l => (l.description || '').toLowerCase().includes(q) || (l.targetId || '')
-                    .toLowerCase().includes(q) || (l.user || '').toLowerCase().includes(q)); }
+            if (logSearch.trim()) { const q = logSearch.trim().normalize('NFC').replace(/[\u200c\u200d]/g, '').toLowerCase();
+                logs = logs.filter(l => (l.description || '').normalize('NFC').replace(/[\u200c\u200d]/g, '').toLowerCase().includes(q) || (l.targetId || '')
+                    .normalize('NFC').replace(/[\u200c\u200d]/g, '').toLowerCase().includes(q) || (l.user || '').normalize('NFC').replace(/[\u200c\u200d]/g, '').toLowerCase().includes(q)); }
             const total = state.activityLog.length;
             return `
             <div class="section-title">${escapeHtml(getTabLabel('notifications'))}</div>
@@ -15072,9 +15400,9 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             const activeNow = userList.filter(u => isUserOnline(u.lastActive)).length; // 🆕 বর্তমানে একটিভ
             let filteredUsers = [...userList];
             if (userViewFilter !== 'all') filteredUsers = filteredUsers.filter(u => u.status === userViewFilter);
-            if (userViewSearch.trim()) { const q = userViewSearch.trim().toLowerCase();
-                filteredUsers = filteredUsers.filter(u => (u.email || '').toLowerCase().includes(q) || (u.displayName || '')
-                    .toLowerCase().includes(q)); }
+            if (userViewSearch.trim()) { const q = userViewSearch.trim().normalize('NFC').replace(/[\u200c\u200d]/g, '').toLowerCase();
+                filteredUsers = filteredUsers.filter(u => (u.email || '').normalize('NFC').replace(/[\u200c\u200d]/g, '').toLowerCase().includes(q) || (u.displayName || '')
+                    .normalize('NFC').replace(/[\u200c\u200d]/g, '').toLowerCase().includes(q)); }
             const pendingReqs = userRequestsCache.filter(r => r.status === 'pending');
             const allCmts = userCommentsCache;
 
@@ -15956,6 +16284,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
 <div hidden>${pmItem('sidebar-action-chat', '💬', editableLabel('btn:chat', getButtonLabel('chat')), pmBadge(chatCount))}</div>
 ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
 <div class="sidebar-item pm-item" id="sidebar-action-bot" role="switch" aria-checked="true" tabindex="0"><span class="icon" aria-hidden="true"></span><span class="pm-lbl-main">চ্যাট বট দেখান</span><span class="pm-switch on" aria-hidden="true"></span></div>
+<div class="sidebar-item pm-item" id="sidebar-action-gchat" role="switch" aria-checked="true" tabindex="0"><span class="icon" aria-hidden="true">💬</span><span class="pm-lbl-main">ভাসমান বাটন দেখান</span><span class="pm-switch on" aria-hidden="true"></span></div>
             <div class="sidebar-item pm-item" id="sidebar-action-dark" role="switch" aria-checked="${darkMode ? 'true' : 'false'}" tabindex="0"><span class="icon" aria-hidden="true">${darkMode ? '☀️' : '🌙'}</span><span class="pm-lbl-main">${darkMode ? 'লাইট মোড' : 'ডার্ক মোড'}</span><span class="pm-switch ${darkMode ? 'on' : ''}" aria-hidden="true"></span></div>
             ${pmAnimItem}
             <div class="pm-tools">
@@ -16520,15 +16849,8 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
             const unread = cdUnreadCount();
             const lastTxt = last ? `<b>${escapeHtml(last.displayName || cdName(last.sender))}:</b> ${last.imageUrl ? '📷 ছবি' : escapeHtml((last.text || '').slice(0, 60))}` : 'এখনো কোনো মেসেজ নেই — প্রথম মেসেজ পাঠান';
             const avs = act.filter(p => p.email !== me).slice(0, 3).map(p => cdAvatar(p.email, cdName(p.email), 24)).join('');
-            return `
-              <span class="cd-dot ${act.length ? '' : 'off'}"></span>
-              <span class="cd-bar-txt">
-                <div class="cd-bar-top">${act.length ? act.length + ' জন অ্যাক্টিভ' : 'গ্রুপ চ্যাট'}</div>
-                <div class="cd-bar-last">${lastTxt}</div>
-              </span>
-              ${avs ? `<span class="cd-bar-avs">${avs}</span>` : ''}
-              ${unread > 0 ? `<span class="cd-badge">${unread > 99 ? '99+' : unread}</span>` : ''}
-              <span class="cd-chev"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg></span>`;
+            // 🆕 [v16.5.103] গোল ভাসমান চ্যাট বাটন (AI বটের মতো) — আইকন + অ্যাক্টিভ-ডট + অপঠিত ব্যাজ
+            return `<svg class="cd-fab-ic" viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8z"/></svg><span class="cd-dot ${act.length ? '' : 'off'}" title="${act.length ? act.length + ' জন অ্যাক্টিভ' : 'গ্রুপ চ্যাট'}"></span>${unread > 0 ? `<span class="cd-badge">${unread > 99 ? '99+' : unread}</span>` : ''}`;
         };
 
         const cdMsgsHtml = () => {
@@ -16702,8 +17024,8 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
             `, () => {
                 const list = document.getElementById('cd-fw-list');
                 const draw = (q) => {
-                    const qq = (q || '').trim().toLowerCase();
-                    const rows = users.filter(u => !qq || (u.displayName || u.email).toLowerCase().includes(qq));
+                    const qq = (q || '').trim().normalize('NFC').replace(/[\u200c\u200d]/g, '').toLowerCase();
+                    const rows = users.filter(u => !qq || (u.displayName || u.email).normalize('NFC').replace(/[\u200c\u200d]/g, '').toLowerCase().includes(qq));
                     list.innerHTML = rows.length ? rows.map(u => {
                         const nm = u.displayName || u.email.split('@')[0];
                         return `<div class="cd-fw-item" data-fw-email="${escapeHtml(u.email)}">${cdAvatar(u.email, nm, 32)}<span>${escapeHtml(nm)}</span>${isAct(u) ? '<i class="cd-dot" style="margin-left:auto"></i>' : ''}</div>`;
@@ -16941,6 +17263,8 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
         // renderMain প্রতিবার এই ফাংশন ডাকে — চ্যাট-বারহীন পেজে গেলে খোলা চ্যাট বন্ধ হয়ে যায়
         window.mfCdTab = (tab) => { if (!CHATDOCK_TABS.includes(tab) && _cdOpen) cdClose(); };
         window.mfCdRefresh = () => { try { cdRefresh(); } catch (e) {} };
+        window.mfCdOpen = () => cdOpen(); window.mfCdUnread = () => { try { return cdUnreadCount(); } catch (e) { return 0; } };
+        window.mfSdCfg = () => { try { return (state.settings && state.settings.speedDial) || {}; } catch (e) { return {}; } };
 
         // পেজ আঁকার পর বারটি #main-এর একদম নিচে বসানো হয় (renderMain পুরো #main নতুন করে আঁকে, তাই প্রতিবার)
         const mountChatDock = () => {
@@ -17038,6 +17362,7 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
             _renderPending = true;
             requestAnimationFrame(() => {
                 _renderPending = false;
+                try { if (window.mfRnoAdopt) window.mfRnoAdopt(); } catch (e) { }   // 🆕 [v16.5.102]
                 const main = document.getElementById('main');
                 if (!main) return;
                 // 🆕 একই ট্যাবে রি-রেন্ডার হলে (এডিট/সেভ/ডিলিট/ফিল্টার ইত্যাদির পর) স্ক্রল পজিশন সংরক্ষণ করা হয়,
@@ -17721,7 +18046,8 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
             updateDoc,
             where,
             arrayUnion,
-            runTransaction
+            runTransaction,
+            serverTimestamp
         } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
         // 🆕 [পুশ নোটিফিকেশন] Firebase Cloud Messaging — ব্রাউজার থেকে FCM টোকেন সংগ্রহ করতে
         import {
@@ -17756,7 +18082,7 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
         const db = getFirestore(app);
 
         window._firestore = { collection, addDoc, getDocs, query, orderBy, doc, getDoc, deleteDoc, setDoc, onSnapshot,
-            updateDoc, where, runTransaction };
+            updateDoc, where, runTransaction, serverTimestamp };
         window._firestoreDb = db;
         window._auth = auth; // 🆕 [ধাপ ১১] AI প্রক্সির জন্য ID টোকেন নিতে
 
@@ -17918,7 +18244,10 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
         // ⚠️ ব্যবহারকারী "Block/Don't allow" দিলে ব্রাউজার কোনোভাবেই টোকেন দেয় না — তাদের জন্য ব্যানারে চালু করার ধাপ দেখানো হয়।
         window.mfPushCampaignCheck = (data) => {
             try {
-                const at = data && data.pushReqAt; if (!at) return;
+                const at = data && data.pushReqAt;
+                try { window.__mfPushReq = { on: !!at && data.pushReqOn !== false, at: at || '' }; window.dispatchEvent(new Event('mf-pushreq')); } catch (e) { }   // 🆕 [v16.5.101] এডমিনের চালু/বন্ধ সুইচ
+                if (!at) return;
+                if (data.pushReqOn === false) { const _o = document.getElementById('mf-push-banner'); if (_o) _o.remove(); return; }   // অনুরোধ বন্ধ — কাউকে ব্যানার/অনুরোধ নয়
                 const uid = window.currentUser && window.currentUser.uid; if (!uid) return;
                 let seen = ''; try { seen = localStorage.getItem('mf_push_req_seen') || ''; } catch (e) { }
                 if (seen === at) return;
@@ -17931,7 +18260,7 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
                 const denied = Notification.permission === 'denied';
                 bn.innerHTML = '<div style="font-weight:700;margin-bottom:4px;">🔔 নোটিফিকেশন চালু করুন</div><div id="mf-pb-t" style="white-space:pre-line;">' + (denied ? 'নোটিফিকেশন ব্লক করা আছে। ঠিকানা-বারের 🔒 → Site settings → Notifications → Allow করুন, তারপর নিচের বোতাম চাপুন।' : 'নতুন নোটিশ, চ্যাট ও রিকোয়েস্ট সময়মতো পেতে অনুমতি দিন।') + '</div><div style="display:flex;gap:8px;margin-top:8px;"><button type="button" id="mf-pb-go" style="flex:1;min-height:44px;border:0;border-radius:10px;font-weight:700;background:#fff;color:#0a6b46;">📱 চালু করুন</button><button type="button" id="mf-pb-x" style="min-height:44px;padding:0 14px;border:1px solid #fff;border-radius:10px;background:transparent;color:#fff;">পরে</button></div>';
                 document.body.appendChild(bn);
-                document.getElementById('mf-pb-x').onclick = () => bn.remove();
+                document.getElementById('mf-pb-x').onclick = () => { done(); bn.remove(); };   // 🆕 [v16.5.101] ✕ চাপলে একই অনুরোধ আর ফিরে আসবে না
                 document.getElementById('mf-pb-go').onclick = async () => {
                     const t = document.getElementById('mf-pb-t'); t.textContent = '⏳ ...';
                     try { const r = await window.mfPushEnable(); t.textContent = r.lines.join('\n'); if (r.ok) { done(); setTimeout(() => bn.remove(), 2500); bn.style.background = '#0a8f5b'; } } catch (e) { t.textContent = '❌ ' + (e.message || e); }
@@ -20891,5 +21220,154 @@ body.dark-mode button:disabled { opacity: .7; color: #cdb06a; }
 })();
 
 </script>
+<style id="mf-chatfab-css">
+/* 🆕 [v16.5.104] ভাসমান স্পিড-ডায়াল: ক্লিক করলে AI বট · গ্রুপ চ্যাট · হোয়াটসঅ্যাপ · মেসেঞ্জার ওপরে খোলে */
+html #cd-bar-wrap,html #mfai-fab{display:none!important}
+#mf-sd{position:fixed;inset:0;z-index:4990;pointer-events:none}
+#mf-sd.hide{display:none}
+#mf-sd-ov{position:absolute;inset:0;background:rgba(0,0,0,.38);opacity:0;transition:opacity .25s;pointer-events:none}
+#mf-sd.open #mf-sd-ov{opacity:1;pointer-events:auto}
+#mf-sd-main{position:fixed;right:16px;bottom:calc(92px + env(safe-area-inset-bottom,0px));z-index:5001;width:56px;height:56px;border-radius:50%;border:2px solid var(--gold-300,#e8c877);background:var(--emerald-800,#123c3d);color:var(--gold-100,#f7ecd0);box-shadow:0 4px 14px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;pointer-events:auto;transition:transform .15s,background .25s,border-color .25s}
+#mf-sd-main:active{transform:scale(.9)}
+#mf-sd-main svg{width:28px;height:28px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;position:absolute;transition:transform .3s,opacity .25s}
+#mf-sd-main .x{opacity:0;transform:rotate(-90deg) scale(.5)}
+#mf-sd.open #mf-sd-main{background:#111;border-color:#fff;color:#fff}
+#mf-sd.open #mf-sd-main .x{opacity:1;transform:none}
+#mf-sd.open #mf-sd-main .b{opacity:0;transform:rotate(90deg) scale(.5)}
+#mf-sd-badge{position:absolute;top:-6px;left:-6px;min-width:20px;height:20px;line-height:20px;padding:0 5px;border-radius:999px;background:#d93025;color:#fff;font-size:11px;font-weight:700;text-align:center;box-sizing:border-box;border:2px solid #fff}
+#mf-sd.open #mf-sd-badge{display:none}
+#mf-sd-list{position:fixed;right:16px;bottom:calc(92px + 56px + 14px + env(safe-area-inset-bottom,0px));z-index:5000;display:flex;flex-direction:column;gap:14px;align-items:flex-end}
+.mf-sd-it{display:flex;align-items:center;gap:10px;border:0;background:none;padding:0;cursor:pointer;font:inherit;opacity:0;transform:translateY(24px) scale(.6);transform-origin:right bottom;visibility:hidden;pointer-events:none;transition:opacity .22s,transform .3s cubic-bezier(.2,1.3,.4,1),visibility 0s .3s}
+#mf-sd.open .mf-sd-it{opacity:1;transform:none;visibility:visible;pointer-events:auto;transition:opacity .22s,transform .3s cubic-bezier(.2,1.3,.4,1),visibility 0s}
+.mf-sd-lb{background:#fff;color:#123c3d;font-size:13px;font-weight:700;padding:5px 11px;border-radius:9px;box-shadow:0 2px 8px rgba(0,0,0,.25);white-space:nowrap}
+.mf-sd-ic{position:relative;width:54px;height:54px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;box-shadow:0 4px 14px rgba(0,0,0,.35);flex:none}
+.mf-sd-ic svg{width:27px;height:27px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.mf-sd-ic.ai,.mf-sd-ic.chat{background:var(--emerald-800,#123c3d);border:2px solid var(--gold-300,#e8c877);color:var(--gold-100,#f7ecd0)}
+.mf-sd-ic.tel{background:#e53935}.mf-sd-ic.wa{background:#25d366}.mf-sd-ic.ms{background:#0a7cff}
+.mf-sd-ic .cnt{position:absolute;top:-5px;left:-5px;min-width:19px;height:19px;line-height:19px;padding:0 4px;border-radius:999px;background:#d93025;color:#fff;font-size:11px;font-weight:700;text-align:center;box-sizing:border-box;border:2px solid #fff}
+@media (min-width:821px){#mf-sd-main{bottom:28px}#mf-sd-list{bottom:calc(28px + 56px + 14px)}}
+body:has(#mfai-sheet.on) #mf-sd,body:has(.modal-backdrop) #mf-sd,body:has(.mobile-sidebar.open) #mf-sd,html.mf-kb #mf-sd,html.mf-chatfab-off #mf-sd{display:none}
+@media print{#mf-sd{display:none!important}}
+</style>
+<script id="mf-speeddial">
+/* 🆕 [v16.5.104] ভাসমান স্পিড-ডায়াল (AI বট · গ্রুপ চ্যাট · হোয়াটসঅ্যাপ · মেসেঞ্জার)।
+   কোন বাটন দেখাবে ও লিংক — এডমিন প্যানেলের সেটিংস থেকে ঠিক হয়; ৩-ডট মেনুর সুইচে এই ডিভাইসে পুরোটা লুকানো যায়। */
+(function () {
+  'use strict';
+  var KEY = 'mf_chatfab_off', root = document.documentElement;
+  function $(id) { return document.getElementById(id); }
+  function off() { try { return localStorage.getItem(KEY) === '1'; } catch (e) { return false; } }
+  function apply() { root.classList.toggle('mf-chatfab-off', off()); }
+  function toastMsg(m) { try { window.toast && window.toast(m); } catch (e) { } }
+  function set(v) { try { localStorage.setItem(KEY, v ? '1' : '0'); } catch (e) { } apply(); sync(); if (v) close(); toastMsg(v ? 'ভাসমান বাটন বন্ধ হলো — মেনু থেকে আবার চালু করা যাবে' : 'ভাসমান বাটন চালু হলো'); }
+  function sync() {
+    var it = $('sidebar-action-gchat');
+    if (it) { it.setAttribute('aria-checked', off() ? 'false' : 'true'); var sw = it.querySelector('.pm-switch'); if (sw) sw.classList.toggle('on', !off()); }
+    var a = $('mf-chat-toggle');
+    if (a) { a.classList.toggle('is-on', !off()); var s2 = a.querySelector('.mf-sw'), tx = off() ? 'বন্ধ' : 'চালু'; if (s2 && s2.textContent !== tx) s2.textContent = tx; }
+  }
+  function inject() {
+    var ai = $('mf-ai-toggle'), st = $('sidebar-settings');
+    if ((ai || (st && st.parentNode)) && !$('mf-chat-toggle')) {
+      var it = document.createElement('div'); it.id = 'mf-chat-toggle'; it.className = 'sidebar-item'; it.setAttribute('role', 'button'); it.tabIndex = 0;
+      it.innerHTML = '<span>💬</span><span>ভাসমান বাটন</span><span class="mf-sw"></span>';
+      if (ai) ai.parentNode.insertBefore(it, ai.nextSibling);
+      else { var host = st.closest('.dragres-wrap') || st; host.parentNode.insertBefore(it, host); }
+      it.addEventListener('click', function (e) { e.stopPropagation(); set(!off()); });
+      it.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); set(!off()); } });
+    }
+    sync();
+  }
+  apply();
+  document.addEventListener('click', function (e) { var t = e.target && e.target.closest ? e.target.closest('#sidebar-action-gchat') : null; if (t) { e.preventDefault(); set(!off()); } });
+  document.addEventListener('keydown', function (e) {
+    if ((e.key === 'Enter' || e.key === ' ') && e.target && e.target.id === 'sidebar-action-gchat') { e.preventDefault(); set(!off()); }
+    if (e.key === 'Escape') close();
+  });
+
+  /* ---- লিংক স্বাভাবিক করা ---- */
+  function en(s) { return String(s || '').replace(/[০-৯]/g, function (d) { return '০১২৩৪৫৬৭৮৯'.indexOf(d); }); }
+  function normWa(v) {
+    v = String(v || '').trim(); if (!v) return '';
+    if (/^https?:\/\//i.test(v)) return v;
+    if (/^(wa\.me|api\.whatsapp\.com|chat\.whatsapp\.com|whatsapp\.com)/i.test(v)) return 'https://' + v;
+    var d = en(v).replace(/\D/g, ''); if (d.indexOf('00') === 0) d = d.slice(2);
+    if (d.length === 11 && d.charAt(0) === '0') d = '88' + d; else if (d.length === 10 && d.charAt(0) === '1') d = '880' + d;
+    return d.length >= 8 ? 'https://wa.me/' + d : '';
+  }
+  function normMs(v) {
+    v = String(v || '').trim(); if (!v) return '';
+    if (/^https?:\/\//i.test(v)) return v;
+    if (/^(m\.me|messenger\.com|facebook\.com|fb\.com|fb\.me)/i.test(v)) return 'https://' + v;
+    v = v.replace(/^@/, ''); return /^[\w.\-]+$/.test(v) ? 'https://m.me/' + v : '';
+  }
+  function normTel(v) {
+    v = String(v || '').trim(); if (!v) return '';
+    var plus = v.charAt(0) === '+', d = en(v).replace(/\D/g, ''); if (d.length < 5) return '';
+    if (plus) return '+' + d; if (d.indexOf('00') === 0) return '+' + d.slice(2);
+    if (d.length === 11 && d.charAt(0) === '0') return '+88' + d; if (d.indexOf('880') === 0) return '+' + d; return d;
+  }
+  window.mfSdNorm = { wa: normWa, ms: normMs, tel: normTel };
+
+  var IC = {
+    main: '<svg class="b" viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8z"/><path d="M8.5 11h7M8.5 14h4"/></svg><svg class="x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+    ai: '<svg viewBox="0 0 24 24"><rect x="5" y="8" width="14" height="10" rx="3"/><path d="M12 8V5M9 13h.01M15 13h.01M3 12v3M21 12v3"/></svg>',
+    chat: '<svg viewBox="0 0 24 24"><path d="M17 20v-1a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v1"/><circle cx="10" cy="8" r="3.5"/><path d="M21 20v-1a4 4 0 0 0-3-3.9M15.5 4.6a3.5 3.5 0 0 1 0 6.8"/></svg>',
+    wa: '<svg viewBox="0 0 24 24"><path d="M3 21l1.6-4.6A8.5 8.5 0 1 1 8 19.6z"/><path d="M9 9c0 3 3 6 6 6l1-1.5-2-1-1 .8c-.8-.4-1.6-1.2-2-2l.8-1-1-2z"/></svg>',
+    tel: '<svg viewBox="0 0 24 24"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/></svg>',
+    ms: '<svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 0 0-9 8.7c0 2.4 1 4.6 2.7 6.1V21l3-1.7c.9.3 2 .4 3.3.4a9 9 0 0 0 0-18z"/><path d="M7.5 13.5l3-3 2 2 3.5-3"/></svg>'
+  };
+  function cfg() { try { return (window.mfSdCfg && window.mfSdCfg()) || {}; } catch (e) { return {}; } }
+  function items() {
+    var c = cfg(), r = [], fab = $('mfai-fab');
+    if (c.ai !== 0 && fab && fab.classList.contains('on') && !root.classList.contains('mf-ai-off') && !root.classList.contains('mf-bot-off'))
+      r.push({ k: 'ai', lb: 'AI সহকারী', run: function () { fab.click(); } });
+    var tel = c.telOn !== 0 && normTel(c.tel); if (tel) r.push({ k: 'tel', lb: 'কল করুন', run: function () { window.location.href = 'tel:' + tel; } });
+    var ms = c.msOn !== 0 && normMs(c.ms); if (ms) r.push({ k: 'ms', lb: 'মেসেঞ্জার', run: function () { window.open(ms, '_blank', 'noopener'); } });
+    var wa = c.waOn !== 0 && normWa(c.wa); if (wa) r.push({ k: 'wa', lb: 'হোয়াটসঅ্যাপ', run: function () { window.open(wa, '_blank', 'noopener'); } });
+    if (c.chat !== 0 && window.mfCdOpen) r.push({ k: 'chat', lb: 'গ্রুপ চ্যাট', run: function () { window.mfCdOpen(); } });
+    return r;
+  }
+  var box, list, main, badge, sig = '', cur = [];
+  function unread() { try { return window.mfCdUnread ? (window.mfCdUnread() | 0) : 0; } catch (e) { return 0; } }
+  function build() {
+    if (box && document.body.contains(box)) return;
+    box = document.createElement('div'); box.id = 'mf-sd'; box.className = 'no-print hide';
+    box.innerHTML = '<div id="mf-sd-ov"></div><div id="mf-sd-list"></div><button type="button" id="mf-sd-main" aria-label="দ্রুত যোগাযোগ বাটন" aria-expanded="false">' + IC.main + '<span id="mf-sd-badge" hidden></span></button>';
+    document.body.appendChild(box);
+    list = $('mf-sd-list'); main = $('mf-sd-main'); badge = $('mf-sd-badge');
+    main.addEventListener('click', function (e) { e.stopPropagation(); box.classList.contains('open') ? close() : open(); });
+    $('mf-sd-ov').addEventListener('click', close);
+  }
+  function open() { render(true); box.classList.add('open'); main.setAttribute('aria-expanded', 'true'); }
+  function close() { if (!box) return; box.classList.remove('open'); main && main.setAttribute('aria-expanded', 'false'); }
+  window.mfSdClose = close;
+  function render(force) {
+    cur = items();
+    var n = unread(), s = cur.map(function (i) { return i.k; }).join(',') + '|' + n;
+    if (!force && s === sig) return; sig = s;
+    list.innerHTML = '';
+    // নিচ থেকে ওপরে একে একে খোলার জন্য: সবচেয়ে নিচেরটির দেরি কম
+    cur.forEach(function (it, idx) {
+      var b = document.createElement('button'); b.type = 'button'; b.className = 'mf-sd-it'; b.setAttribute('data-sd', it.k);
+      var delay = (cur.length - 1 - idx) * 55;
+      b.style.transitionDelay = delay + 'ms,' + delay + 'ms,0s';
+      b.innerHTML = '<span class="mf-sd-lb">' + it.lb + '</span><span class="mf-sd-ic ' + it.k + '">' + IC[it.k] + (it.k === 'chat' && n > 0 ? '<span class="cnt">' + (n > 99 ? '99+' : n) + '</span>' : '') + '</span>';
+      b.addEventListener('click', function (e) { e.stopPropagation(); close(); setTimeout(function () { try { it.run(); } catch (er) { console.error(er); } }, 180); });
+      list.appendChild(b);
+    });
+    badge.hidden = !(n > 0 && cur.some(function (i) { return i.k === 'chat'; })); badge.textContent = n > 99 ? '99+' : String(n);
+  }
+  function tick() {
+    if (!document.body) return; build(); render(false);
+    box.classList.toggle('hide', !cur.length);
+    if (!cur.length) close();
+  }
+  function start() { new MutationObserver(inject).observe(document.body, { childList: true, subtree: true }); inject(); tick(); setInterval(tick, 1200); }
+  if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
+  window.mfChatFab = { off: off, set: set };
+})();
+</script>
+
 </body>
 </html>
