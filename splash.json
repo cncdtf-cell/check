@@ -1,0 +1,7 @@
+{
+  "enabled": true,
+  "text": "তহবিল ব্যবস্থাপনা",
+  "image": "icon.png",
+  "minMs": 800,
+  "maxMs": 6000
+}
