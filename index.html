@@ -21649,6 +21649,8 @@ body.dark-mode .log-icon.sent,body.dark-mode .log-tag.sent{color:#e8c877}
 (function () {
   'use strict';
   var KEY = 'mf_install_dismissed', ev = null, box = null;
+  // 🆕 [v16.5.112] ইনস্টলযোগ্য হতে Chrome-এর সার্ভিস ওয়ার্কার লাগে: বিদ্যমান firebase-messaging-sw.js-ই (একই ফাইল, একই স্কোপ) পেজ লোডেই নিবন্ধিত হয়
+  try { if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) window.addEventListener('load', function () { navigator.serviceWorker.register('./firebase-messaging-sw.js').catch(function () { }); }); } catch (e) { }
   function standalone() { try { return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true; } catch (e) { return false; } }
   function dismissed() { try { return localStorage.getItem(KEY) === '1'; } catch (e) { return false; } }
   function build() {

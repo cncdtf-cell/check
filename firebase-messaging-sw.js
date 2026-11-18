@@ -26,6 +26,11 @@ self.addEventListener('notificationclick', (event) => {
   })());
 });
 
+// 🆕 [v3] অ্যাপ হিসেবে ইনস্টলের জন্য Chrome একটি fetch হ্যান্ডলার চায়। এটি কিছুই বদলায় না — সব রিকোয়েস্ট আগের মতোই সরাসরি নেটওয়ার্কে যায়।
+self.addEventListener('install', () => { self.skipWaiting(); });
+self.addEventListener('activate', (event) => { event.waitUntil(self.clients.claim()); });
+self.addEventListener('fetch', () => { /* পাস-থ্রু: respondWith নেই */ });
+
 importScripts('https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging-compat.js');
 
