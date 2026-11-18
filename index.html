@@ -4797,6 +4797,14 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
 /* 🆕 মোবাইলে পেজের নিচের কপিরাইট/যোগাযোগ লেখা (footer) কোথাও দেখাবে না — শুধু ৩-ডট (⋮) প্রোফাইল মেনুর ভেতরে থাকবে */
 @media (max-width: 820px) { #app > footer.no-print { display: none !important; } }
 </style>
+    <!-- 🆕 [v16.5.111] PWA: ফোনে অ্যাপের মতো ইনস্টল (manifest.json ও icon.png এই ফাইলের পাশে রাখুন; আইকন বদলাতে শুধু icon.png বদলান) -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0c4230">
+    <link rel="icon" type="image/png" href="icon.png">
+    <link rel="apple-touch-icon" href="icon.png">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Fund collect">
 </head>
 <body>
     <script>
@@ -21629,5 +21637,36 @@ body.dark-mode .log-icon.sent,body.dark-mode .log-tag.sent{color:#e8c877}
 .mf-unsent-tbl{width:100%;border-collapse:collapse;font-size:13px}.mf-unsent-tbl th,.mf-unsent-tbl td{border-bottom:1px solid var(--line,#e1dac6);padding:6px 8px;text-align:left}
 </style>
 
+<style id="mf-install-css">
+#mf-install{position:fixed;left:12px;bottom:14px;z-index:9990;display:none;align-items:center;gap:8px;background:#0c4230;color:#fff;border-radius:999px;padding:8px 8px 8px 14px;font-size:13.5px;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.28)}
+#mf-install.show{display:flex}
+#mf-install button{border:0;cursor:pointer;font:inherit}
+#mf-install .go{background:#d6a846;color:#0c2c22;border-radius:999px;padding:6px 12px}
+#mf-install .x{background:transparent;color:#fff;opacity:.8;font-size:16px;padding:2px 8px}
+@media print{#mf-install{display:none!important}}
+</style>
+<script id="mf-install-js">
+(function () {
+  'use strict';
+  var KEY = 'mf_install_dismissed', ev = null, box = null;
+  function standalone() { try { return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true; } catch (e) { return false; } }
+  function dismissed() { try { return localStorage.getItem(KEY) === '1'; } catch (e) { return false; } }
+  function build() {
+    if (box) return; box = document.createElement('div'); box.id = 'mf-install'; box.className = 'no-print';
+    box.innerHTML = '<span>📲 ফোনে অ্যাপ হিসেবে রাখুন</span><button type="button" class="go">ইনস্টল</button><button type="button" class="x" aria-label="বন্ধ">✕</button>';
+    document.body.appendChild(box);
+    box.querySelector('.go').onclick = function () { if (!ev) return; ev.prompt(); ev.userChoice.then(function () { ev = null; box.classList.remove('show'); }); };
+    box.querySelector('.x').onclick = function () { box.classList.remove('show'); try { localStorage.setItem(KEY, '1'); } catch (e) { } };
+  }
+  window.addEventListener('beforeinstallprompt', function (e) {
+    e.preventDefault(); ev = e;
+    if (standalone() || dismissed()) return;
+    var go = function () { build(); box.classList.add('show'); };
+    if (document.body) go(); else document.addEventListener('DOMContentLoaded', go);
+  });
+  window.addEventListener('appinstalled', function () { if (box) box.classList.remove('show'); });
+  window.mfInstallApp = function () { if (ev) { ev.prompt(); } else { try { alert('ব্রাউজার মেনু (⋮) থেকে "Add to Home screen / হোম স্ক্রিনে যোগ করুন" বেছে নিন। iPhone-এ Safari-র শেয়ার বাটন থেকে।'); } catch (e) { } } };
+})();
+</script>
 </body>
 </html>
