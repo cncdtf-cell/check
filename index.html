@@ -4805,8 +4805,58 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="Fund collect">
+<style id="mf-splash-css">
+#mf-splash{position:fixed;inset:0;z-index:2147483000;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;transition:opacity .45s ease,transform .45s ease}
+#mf-splash.out{opacity:0;transform:scale(1.05);pointer-events:none}
+#mf-splash .sp-logo{width:min(62vw,230px);height:min(62vw,230px);object-fit:contain;animation:mfSpIn 1s ease-out both}
+#mf-splash .sp-name{font:700 14px/1.4 system-ui,'Noto Sans Bengali',sans-serif;color:#0c4230;opacity:0;animation:mfSpIn .8s .7s ease-out both}
+#mf-splash .sp-bar{width:120px;height:4px;border-radius:4px;background:#e4e0d2;overflow:hidden}
+#mf-splash .sp-bar i{display:block;height:100%;width:40%;background:#0c4230;border-radius:4px;animation:mfSpLd 1.6s .4s ease-in-out infinite}
+@keyframes mfSpIn{from{opacity:0;transform:scale(.85)}to{opacity:1;transform:none}}
+@keyframes mfSpLd{0%{margin-left:-40%}100%{margin-left:100%}}
+@media (prefers-reduced-motion:reduce){#mf-splash .sp-logo,#mf-splash .sp-name,#mf-splash .sp-bar i{animation:none;opacity:1}#mf-splash{transition:opacity .2s}}
+@media print{#mf-splash{display:none!important}}
+</style>
 </head>
 <body>
+<!-- 🆕 [v16.5.113] অ্যাপ খোলার স্প্ল্যাশ (লোগো ধীরে ফোটে)। ছবি = icon.png; লেখা/চালু-বন্ধ/সময় = splash.json (দুটোই এই ফাইলের পাশে) -->
+<div id="mf-splash" aria-hidden="true"><img class="sp-logo" src="icon.png" alt="" onerror="this.style.display='none'"><div class="sp-name">তহবিল ব্যবস্থাপনা</div><div class="sp-bar"><i></i></div></div>
+<script id="mf-splash-js">
+(function () {
+  'use strict';
+  var el = document.getElementById('mf-splash'); if (!el) return;
+  var cfg = { enabled: true, text: 'তহবিল ব্যবস্থাপনা', image: 'icon.png', minMs: 800, maxMs: 6000 }, LS = 'mf_splash_cfg', t0 = Date.now(), over = false;
+  function apply(j) {
+    if (!j || typeof j !== 'object') return;
+    if (typeof j.enabled === 'boolean') cfg.enabled = j.enabled;
+    if (typeof j.text === 'string') cfg.text = j.text;
+    if (typeof j.image === 'string' && j.image) cfg.image = j.image;
+    if (+j.minMs >= 0) cfg.minMs = +j.minMs; if (+j.maxMs > 0) cfg.maxMs = +j.maxMs;
+    var n = el.querySelector('.sp-name'); if (n) { n.textContent = cfg.text; n.style.display = cfg.text ? '' : 'none'; }
+    var im = el.querySelector('.sp-logo'); if (im && im.getAttribute('src') !== cfg.image) { im.style.display = ''; im.setAttribute('src', cfg.image); }
+    if (!cfg.enabled) finish(true);
+  }
+  function finish(now) {
+    if (over) return; over = true;
+    var go = function () { el.classList.add('out'); setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); var s = document.getElementById('mf-splash-css'); if (s && s.parentNode) s.parentNode.removeChild(s); }, 520); };
+    if (now) { if (el.parentNode) el.parentNode.removeChild(el); return; }
+    go();
+  }
+  try { apply(JSON.parse(localStorage.getItem(LS) || 'null')); } catch (e) { }
+  try { fetch('splash.json', { cache: 'no-cache' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) { if (j) { apply(j); try { localStorage.setItem(LS, JSON.stringify(j)); } catch (e) { } } }).catch(function () { }); } catch (e) { }
+  function ready() {
+    if (window.currentUser === undefined) return false;               // লগইন-যাচাই এখনো শেষ হয়নি
+    if (!window.currentUser) return true;                              // লগইন করা নেই — লগইন-ফর্ম দেখানো যাবে
+    var g = document.getElementById('auth-gate'), m = document.getElementById('main');
+    return !g || g.classList.contains('hidden') || (m && m.children.length > 0);
+  }
+  var iv = setInterval(function () {
+    if (over) { clearInterval(iv); return; }
+    var dt = Date.now() - t0;
+    if ((ready() && dt >= cfg.minMs) || dt >= cfg.maxMs) { clearInterval(iv); finish(false); }
+  }, 120);
+})();
+</script>
     <script>
       // 🆕 [FOUC fix] পেজ রেন্ডার হওয়ার আগেই সেভ করা ডার্ক মোড state সঙ্গে সঙ্গে apply করা হচ্ছে,
       // যাতে প্রথমে Light Mode flash করে পরে Dark Mode না হয়। মূল darkMode ভ্যারিয়েবল ও
@@ -4853,7 +4903,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
         //  কনফিগারেশন ও ডিফল্ট
         // ======================================================================
         const CONFIG = {
-            STORAGE_KEY: 'mahfil_fund_app_v1',
+            STORAGE_KEY: 'mahfil_fund_user_v1',   // 🔧 [v16.5.114] অ্যাডমিন অ্যাপের ক্যাশ (mahfil_fund_app_v1) থেকে আলাদা — একই ঠিকানায় দুই অ্যাপের ক্যাশ মিশে যেত
             DEFAULT_SETTINGS: {
                 logo: '☪',
                 logoUrl: '',
@@ -17700,6 +17750,7 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
                     default:
                         main.innerHTML = `<div class="empty-state"><div class="em">📄</div>পাতা পাওয়া যায়নি।</div>`;
                 }
+                try { if (window.mfPgNow) window.mfPgNow(); } catch (e) { }   // 🆕 [v16.5.114] বড় তালিকায় প্রথম layout-এর আগেই বাড়তি সারি লুকানো
                 // 🆕 প্রিন্ট করলে বর্তমান ফিল্টার/সার্চ/সাজানোর তথ্য পাতায় দেখানোর জন্য ব্যানার আপডেট
                 const pfb = document.getElementById('print-filter-banner');
                 if (pfb) pfb.textContent = `🔍 ফিল্টার: ${getActiveFilterDescription()} — প্রিন্ট: ${new Date().toLocaleString('bn-BD', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`;
@@ -18695,7 +18746,7 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
         // ফিরে আসার আগেই ensureUserDocument চলে — তাই লোকাল ক্যাশে না পেলে সরাসরি ক্লাউড থেকে আনা হয়
         async function getAdminEmail() {
             try {
-                const raw = localStorage.getItem('mahfil_fund_app_v1');
+                const raw = localStorage.getItem('mahfil_fund_user_v1');
                 if (raw) {
                     const parsed = JSON.parse(raw);
                     if (parsed.settings?.adminEmail) return parsed.settings.adminEmail;
@@ -18726,7 +18777,7 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
             try { await window.mfAudit.logoutFlush(); } catch (e) { }
                 await signOut(auth);
             currentUser = null;
-            localStorage.removeItem('mahfil_fund_app_v1');
+            localStorage.removeItem('mahfil_fund_user_v1');
         }
 
         // 🆕 প্রেজেন্স হার্টবিট: ইউজার অনলাইন থাকা অবস্থায় নিয়মিত lastActive টাইমস্ট্যাম্প Firestore-এ পাঠানো হয়
@@ -19321,6 +19372,8 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
 
     /* ---------- "কার্যক্রম" কলাম: বাটনগুলো একটার নিচে একটা না হয়ে পাশাপাশি (flex-row, জায়গা না থাকলে wrap) ---------- */
     var tidyActionCells = function (tb) {
+        var _b0 = tb.tBodies && tb.tBodies[0], _n = _b0 ? _b0.rows.length : 0;   // 🔧 [v16.5.114] একই টেবিলে একই সারি-সংখ্যায় বারবার পুরো স্ক্যান নয়
+        if (tb.__mfTidyN === _n) return; tb.__mfTidyN = _n;
         var cells = tb.querySelectorAll('tbody td');
         for (var i = 0; i < cells.length; i++) {
             var td = cells[i];
@@ -19353,6 +19406,7 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
     var injectBars = function (tb) {
         if (!tb.tHead || tb.classList.contains('no-tbl-font')) return;
         if (tb.closest('#export-capture') || tb.closest('.tbl-tools')) return;
+        if (tb.__mfBarDone) return; tb.__mfBarDone = 1;   // 🔧 [v16.5.114] প্রতিটি DOM-পরিবর্তনে একই টেবিলে বারবার টুলবার-যাচাই নয়
         var host = tb.closest('.table-wrap') || tb;
         var prev = host.previousElementSibling;
         if (prev && prev.classList && prev.classList.contains('tbl-tools')) return;
@@ -19487,6 +19541,7 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
         var present = keys.filter(Boolean);
         var id = table.getAttribute('data-mf-tid') || (present.length ? tableIdFor(present) : null);   // 🆕 [v16.5.55]
         var frozen = id ? getKeys(id) : [];
+        if (!frozen.length && !table.__mfFrz) return;   // 🔧 [v16.5.114] ফ্রিজ নেই — layout-জোরকারী মাপজোখ বাদ
         var idxs = [];
         keys.forEach(function (k, ix) { if (k && frozen.indexOf(k) >= 0) idxs.push(ix); });
         var tb0 = table.tBodies[0];
@@ -19496,7 +19551,8 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
         if (table.__mfFp === fp && ok) return;
         clearTable(table);
         table.__mfFp = fp;
-        if (!idxs.length) return;
+        if (!idxs.length) { table.__mfFrz = false; return; }
+        table.__mfFrz = true;
         var host = table.closest('.table-wrap') || table.parentNode;
         var avail = host ? host.clientWidth : 0;
         var left = 0, use = [];
@@ -21668,6 +21724,62 @@ body.dark-mode .log-icon.sent,body.dark-mode .log-tag.sent{color:#e8c877}
   });
   window.addEventListener('appinstalled', function () { if (box) box.classList.remove('show'); });
   window.mfInstallApp = function () { if (ev) { ev.prompt(); } else { try { alert('ব্রাউজার মেনু (⋮) থেকে "Add to Home screen / হোম স্ক্রিনে যোগ করুন" বেছে নিন। iPhone-এ Safari-র শেয়ার বাটন থেকে।'); } catch (e) { } } };
+})();
+</script>
+<style id="mf-pg-css">
+tr.mf-pg-hide{display:none}
+#export-capture tr.mf-pg-hide{display:table-row!important}
+@media print{tr.mf-pg-hide{display:table-row!important}.mf-pg-bar{display:none!important}}
+.mf-pg-bar{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;margin:10px 0 18px;font-size:13.5px}
+.mf-pg-bar span{opacity:.8}
+.mf-pg-bar button{border:1.5px solid var(--emerald-700,#0c4230);background:var(--paper-raised,#fff);color:var(--emerald-700,#0c4230);border-radius:999px;padding:8px 16px;font:inherit;font-weight:700;cursor:pointer;min-height:40px}
+.mf-pg-bar button.pri{background:var(--emerald-700,#0c4230);color:#fff}
+body.dark-mode .mf-pg-bar button{background:#17302a;color:#e8c877;border-color:#e8c877}
+body.dark-mode .mf-pg-bar button.pri{background:#e8c877;color:#0c2c22}
+</style>
+<script id="mf-pg-js">
+/* 🆕 [v16.5.114] বড় তালিকায় লেগ কমানো: ১২০টির বেশি সারি থাকলে প্রথমে ৬০টি দেখায়, নিচে "আরও দেখান" বাটন।
+   সারিগুলো DOM-এ থেকেই যায় (শুধু লুকানো), তাই এডিট/ডিলিট/সিলেক্ট/এক্সপোর্ট/প্রিন্ট আগের মতোই কাজ করে।
+   এক্সপোর্ট-ক্যাপচার ও প্রিন্টে সব সারি দেখা যায়। */
+(function () {
+  'use strict';
+  var MIN = 120, FIRST = 60, STEP = 60, limits = {}, lastSig = '', obs = null, obsEl = null, pend = false;
+  function sigOf(tb, i) { var ks = []; try { var hs = tb.tHead && tb.tHead.rows[0] ? tb.tHead.rows[0].cells : []; for (var k = 0; k < hs.length; k++) ks.push(hs[k].getAttribute('data-col-key') || hs[k].textContent.trim().slice(0, 12)); } catch (e) { } return (tb.getAttribute('data-mf-tid') || '') + ':' + i + ':' + ks.join('|'); }
+  function rowsOf(tb) { var b = tb.tBodies && tb.tBodies[0]; return b ? Array.prototype.slice.call(b.rows) : []; }
+  function bn(n) { return String(n).replace(/\d/g, function (d) { return '০১২৩৪৫৬৭৮৯'.charAt(+d); }); }
+  function apply(tb, key) {
+    var rows = rowsOf(tb); if (rows.length < MIN) return;
+    var lim = limits[key] || FIRST;
+    try { var _a = window._scrollAnchorSelector; if (_a) { var _el = tb.querySelector(_a); var _tr = _el && (_el.closest ? _el.closest('tr') : null); var _ix = _tr ? rows.indexOf(_tr) : -1; if (_ix >= lim) { lim = Math.ceil((_ix + 1) / STEP) * STEP; limits[key] = lim; } } } catch (e) { }   // এডিট-করা সারি লুকানো থাকলে খুলে দেওয়া
+    rows.forEach(function (r, i) { r.classList.toggle('mf-pg-hide', i >= lim); });
+    var host = tb.closest('.table-wrap') || tb, old = host.nextElementSibling;
+    if (old && old.classList && old.classList.contains('mf-pg-bar')) old.parentNode.removeChild(old);
+    if (lim >= rows.length) return;
+    var bar = document.createElement('div'); bar.className = 'mf-pg-bar no-print';
+    bar.innerHTML = '<span>' + bn(Math.min(lim, rows.length)) + ' / ' + bn(rows.length) + ' টি দেখানো হচ্ছে</span><button type="button" class="pri" data-pg="more">⬇ আরও ' + bn(STEP) + 'টি দেখান</button><button type="button" data-pg="all">সব দেখান</button>';
+    bar.addEventListener('click', function (e) {
+      var b = e.target.closest && e.target.closest('[data-pg]'); if (!b) return;
+      limits[key] = b.getAttribute('data-pg') === 'all' ? rows.length : lim + STEP;
+      apply(tb, key);
+    });
+    host.parentNode.insertBefore(bar, host.nextSibling);
+  }
+  function run() {
+    pend = false;
+    var main = document.getElementById('main'); if (!main) return;
+    var tbs = main.querySelectorAll('table'), sigs = [];
+    for (var i = 0; i < tbs.length; i++) { if (tbs[i].closest('#export-capture')) continue; sigs.push(sigOf(tbs[i], i)); }
+    var sig = sigs.join('#'); if (sig !== lastSig) { limits = {}; lastSig = sig; }
+    for (var j = 0; j < tbs.length; j++) { if (tbs[j].closest('#export-capture')) continue; try { apply(tbs[j], sigOf(tbs[j], j)); } catch (e) { console.error('[পেজিং]', e); } }
+  }
+  function sched() { if (pend) return; pend = true; (window.requestAnimationFrame || setTimeout)(run); }
+  function attach() {
+    var m = document.getElementById('main'); if (!m || m === obsEl) return;
+    if (obs) obs.disconnect(); obsEl = m; obs = new MutationObserver(sched); obs.observe(m, { childList: true }); sched();
+  }
+  setInterval(attach, 700); attach();
+  window.mfPgNow = run;
+  window.mfPgExpandAll = function () { var m = document.getElementById('main'); if (!m) return; var t = m.querySelectorAll('tr.mf-pg-hide'); for (var i = 0; i < t.length; i++) t[i].classList.remove('mf-pg-hide'); };
 })();
 </script>
 </body>
