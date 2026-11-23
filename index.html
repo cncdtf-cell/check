@@ -12071,21 +12071,23 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
         // document.body-তে একবার বানানো হয়, যেটা রি-রেন্ডারে কখনো মুছে যায় না।
         const getGlobalChatImageInput = () => {
             let el = document.getElementById('chat-image-input-global');
-            if (el) return el;
-            el = document.createElement('input');
+            if (!el) {
+                el = document.createElement('input');
+                el.id = 'chat-image-input-global';
+                el.style.cssText = 'position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0;';
+                el.addEventListener('change', () => {
+                    const files = Array.from(el.files || []);
+                    el.value = '';
+                    if (!files.length) { _chatImgLog('ফাইল-পিকার বন্ধ হয়েছে, কোনো ছবি নির্বাচিত হয়নি'); return; }
+                    _chatImgLog('change ইভেন্ট এসেছে, লক্ষ্য =', _chatImagePickTarget, 'ছবির সংখ্যা =', files.length);
+                    if (_chatImagePickTarget === 'dm') sendDmImages(files); else sendChatImages(files);
+                });
+                document.body.appendChild(el);
+            }
             el.type = 'file';
-            el.id = 'chat-image-input-global';
             el.accept = 'image/*';
             el.multiple = true;
-            el.style.cssText = 'position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0;';
-            el.addEventListener('change', () => {
-                const files = Array.from(el.files || []);
-                el.value = '';
-                if (!files.length) { _chatImgLog('ফাইল-পিকার বন্ধ হয়েছে, কোনো ছবি নির্বাচিত হয়নি'); return; }
-                _chatImgLog('change ইভেন্ট এসেছে, লক্ষ্য =', _chatImagePickTarget, 'ছবির সংখ্যা =', files.length);
-                if (_chatImagePickTarget === 'dm') sendDmImages(files); else sendChatImages(files);
-            });
-            document.body.appendChild(el);
+            el.setAttribute('multiple', '');
             return el;
         };
         const pickChatImage = (target) => {
@@ -12126,11 +12128,18 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             try {
                 _chatImgLog('আপলোড শুরু (Apps Script-এ পাঠানো হচ্ছে)');
                 const imageUrls = [];
+                const failedUploads = [];
                 for (let i = 0; i < list.length; i++) {
-                    const imageUrl = await uploadImageToDrive(list[i], chatImageFileTag(displayName) + (list.length > 1 ? '_' + (i + 1) : ''), '', '', null, '', 'chat');
-                    if (imageUrl) imageUrls.push(imageUrl);
+                    try {
+                        const imageUrl = await uploadImageToDrive(list[i], chatImageFileTag(displayName) + (list.length > 1 ? '_' + (i + 1) : ''), '', '', null, '', 'chat');
+                        if (!imageUrl) throw new Error('ছবির লিংক পাওয়া যায়নি');
+                        imageUrls.push(imageUrl);
+                    } catch (uploadError) {
+                        failedUploads.push({ index: i + 1, message: uploadError && uploadError.message ? uploadError.message : 'অজানা এরর' });
+                        console.error(`[চ্যাট] ${i + 1} নম্বর ছবি আপলোড ব্যর্থ:`, uploadError);
+                    }
                 }
-                if (!imageUrls.length) throw new Error('কোনো ছবির URL পাওয়া যায়নি');
+                if (!imageUrls.length) throw new Error(failedUploads.length ? failedUploads[0].message : 'কোনো ছবির URL পাওয়া যায়নি');
                 _chatImgLog('Drive থেকে URL এলো:', imageUrls);
                 const msg = { id: uid(), text: '', imageUrl: imageUrls[0], imageUrls, sender: user.email, displayName, timestamp: new Date()
                         .toISOString() };
@@ -12148,7 +12157,11 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                     }
                 }
                 renderMain();
-                toast(imageUrls.length > 1 ? `✅ ${toBengaliNum(imageUrls.length)}টি ছবি পাঠানো হয়েছে` : '✅ ছবি পাঠানো হয়েছে');
+                if (failedUploads.length) {
+                    toast(`⚠️ ${toBengaliNum(imageUrls.length)}টি ছবি পাঠানো হয়েছে; ${toBengaliNum(failedUploads.length)}টি ব্যর্থ (ছবি ${toBengaliNum(failedUploads[0].index)}): ${failedUploads[0].message}`);
+                } else {
+                    toast(imageUrls.length > 1 ? `✅ ${toBengaliNum(imageUrls.length)}টি ছবি পাঠানো হয়েছে` : '✅ ছবি পাঠানো হয়েছে');
+                }
             } catch (e) {
                 console.error('chat image send error', e);
                 toast('❌ ছবি পাঠানো যায়নি: ' + (e && e.message ? e.message : 'অজানা এরর'));
@@ -16333,7 +16346,6 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
               <div class="cd-replybar"></div>
               <div class="chat-input-area no-print">
                 <button class="btn btn-outline btn-attach" id="chat-attach-btn" type="button" title="একসাথে সর্বোচ্চ ১০টি ছবি পাঠান (প্রতি ছবি সর্বোচ্চ ১০ এমবি)" ${disabled}>📎</button>
-                <input type="file" id="chat-image-input" accept="image/*" style="display:none;">
                 <textarea id="chat-input" rows="1" placeholder="${ph}" ${disabled}></textarea>
                 <button class="btn btn-primary btn-send" id="chat-send-btn" ${disabled}>${isLoggedIn ? '📨 পাঠান' : '🔑 লগইন'}</button>
               </div>
@@ -16360,7 +16372,6 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             if (sendBtn) sendBtn.addEventListener('click', sendChatMessage);
             // 🆕 ছবি অ্যাটাচমেন্ট — 📎 বাটনে ক্লিক করলে ফাইল-পিকার খোলে, ছবি বাছাই করলেই পাঠানো হয়
             const attachBtn = document.getElementById('chat-attach-btn');
-            const imageInput = document.getElementById('chat-image-input');
             if (attachBtn) {
                 attachBtn.addEventListener('click', () => {
                     if (!window.currentUser) { openLoginModal(); return; }
