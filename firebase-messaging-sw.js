@@ -1,8 +1,4 @@
 // Firebase Cloud Messaging - Service Worker (Sardar Haat)
-// 🔧 [v2] নোটিফিকেশনে ক্লিক করলে 404 আসার সমাধান: আগে লিংক ডোমেইনের মূলে ("/") খুলত — সাইট সাব-ফোল্ডারে/ভিন্ন ফাইল-নামে থাকলে 404।
-// এখন: (১) অ্যাপ আগে থেকে খোলা থাকলে সেই ট্যাবেই ফোকাস + ঠিক ট্যাবে যাওয়ার বার্তা (নতুন পেজ খোলে না, তাই 404 অসম্ভব);
-// (২) খোলা না থাকলে — অ্যাপ নিজে যে পেজ-ঠিকানা (pagePath) জমা রেখেছে সেটাই খোলে; না থাকলে এই ফাইলের ফোল্ডার (scope)।
-// এই হ্যান্ডলার Firebase-এর নিজস্ব হ্যান্ডলারের আগে বসে ওটাকে থামায় (FCM আর ভুল লিংক খুলতে পারে না)।
 self.addEventListener('notificationclick', (event) => {
   event.stopImmediatePropagation();
   event.notification.close();
@@ -26,10 +22,9 @@ self.addEventListener('notificationclick', (event) => {
   })());
 });
 
-// 🆕 [v3] অ্যাপ হিসেবে ইনস্টলের জন্য Chrome একটি fetch হ্যান্ডলার চায়। এটি কিছুই বদলায় না — সব রিকোয়েস্ট আগের মতোই সরাসরি নেটওয়ার্কে যায়।
 self.addEventListener('install', () => { self.skipWaiting(); });
 self.addEventListener('activate', (event) => { event.waitUntil(self.clients.claim()); });
-self.addEventListener('fetch', () => { /* পাস-থ্রু: respondWith নেই */ });
+self.addEventListener('fetch', () => { /* pass-through */ });
 
 importScripts('https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging-compat.js');
@@ -44,13 +39,10 @@ firebase.initializeApp({
 });
 
 const messaging = firebase.messaging();
-
-// ব্যাকগ্রাউন্ডে নোটিফিকেশন এলে (অ্যাপ বন্ধ থাকলে) দেখানো হবে
 messaging.onBackgroundMessage((payload) => {
   const n = payload.notification || {};
   const d = payload.data || {};
-  const title = n.title || d.title || 'সরদার হাট মাহফিল';
-  self.registration.showNotification(title, {
+  self.registration.showNotification(n.title || d.title || 'সরদার হাট মাহফিল', {
     body: n.body || d.body || '',
     icon: n.icon || d.icon || undefined,
     data: { link: d.link || '/' }

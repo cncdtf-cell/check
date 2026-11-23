@@ -4903,7 +4903,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
         //  কনফিগারেশন ও ডিফল্ট
         // ======================================================================
         const CONFIG = {
-            STORAGE_KEY: 'mahfil_fund_app_v1',
+            STORAGE_KEY: 'mahfil_fund_user_v1',   // 🔧 [v16.5.114] অ্যাডমিন অ্যাপের ক্যাশ (mahfil_fund_app_v1) থেকে আলাদা — একই ঠিকানায় দুই অ্যাপের ক্যাশ মিশে যেত
             DEFAULT_SETTINGS: {
                 logo: '☪',
                 logoUrl: '',
@@ -5335,7 +5335,9 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
         //  ইউটিলিটি ফাংশন
         // ======================================================================
         const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
-        const fmtMoney = n => '৳' + (Number(n) || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+        const mfDigitsBn = () => { try { return ((typeof state !== 'undefined' && state && state.settings && state.settings.digitStyle) || 'bn') !== 'en'; } catch (e) { return true; } };   // 🆕 [v16.5.115] টাকার অঙ্ক: ডিফল্ট বাংলা (সেটিংসে বদলানো যায়)
+        const fmtMoney = n => { const s = '৳' + (Number(n) || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 }); return mfDigitsBn() ? s.replace(/[0-9]/g, d => '০১২৩৪৫৬৭৮৯'.charAt(+d)) : s; };
+        window.mfDigitsBn = mfDigitsBn;
         const fmtDate = d => { if (!d) return ''; try { return window.mfFmtDate ? window.mfFmtDate(d) : String(d); } catch (e) { return d; } };
         const todayISO = () => new Date().toISOString().slice(0, 10);
         // 🆕 প্রেজেন্স/একটিভ-স্ট্যাটাস: এই সময়ের (মিলিসেকেন্ড) মধ্যে হার্টবিট পেলে "এখন সক্রিয়" ধরা হবে
@@ -5375,11 +5377,13 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
         const categoryById = id => state.categories.find(c => c.id === id);
         // 🆕 [ধাপ ০৯] মেনুর শিরোনাম: ⓐ "ইউজার লেআউট" এডিটরে (লাইভ প্রিভিউ) স্পষ্টভাবে বদলানো লেবেল থাকলে সেটাই (বিদ্যমান ফিচার অক্ষত);
         // ⓑ নইলে এডমিন সেটিংসের "পাতার শিরোনাম ও বিবরণ"-এ লেখা (state.settings.tabLabels) — হুবহু, রিয়েল-টাইমে; ⓒ ফাঁকা হলে ডিফল্ট।
+        // 🆕 [v16.5.119] এডমিন সেটিংসের লেবেল (labelsAt) লেআউট-এডিটরের (userLayoutAt) চেয়ে নতুন হলে সেটিংসই জেতে
+        const _settingsNewer = () => { const st = state?.settings || {}; return !previewMode && Number(st.labelsAt || 0) > Number(st.userLayoutAt || 0); };
         const getTabLabel = key => {
             const ul = getPreviewDraft();
             const dflt = CONFIG.DEFAULT_SETTINGS.userLayout.tabLabels[key];
             const lay = ul?.tabLabels?.[key];
-            if (lay && lay !== dflt) return lay;
+            if (lay && lay !== dflt && !_settingsNewer()) return lay;
             const sl = state.settings?.tabLabels?.[key];
             if (typeof sl === 'string' && sl.trim()) return sl;
             return lay || dflt || key;
@@ -5390,7 +5394,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             const ul = getPreviewDraft();
             const dflt = CONFIG.DEFAULT_SETTINGS.userLayout.homeLabel;
             const lay = ul?.homeLabel;
-            if (lay && lay !== dflt) return lay;
+            if (lay && lay !== dflt && !_settingsNewer()) return lay;
             const sl = state.settings?.homeLabel;
             if (typeof sl === 'string' && sl.trim()) return sl;
             return lay || dflt;
@@ -6305,6 +6309,269 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
 
         // 🆕 [v16.5.69] পাঠানোর অবস্থা — এডমিন প্যানেলের সাথে একই জায়গায় (settings.receiptNoMap.notified[entryId] = {via, vias, at}) জমা হয়
         const _notVias = (nt) => (nt && Array.isArray(nt.vias) && nt.vias.length) ? nt.vias : String((nt && nt.via) || '').split(/\s*,\s*/).filter(Boolean);
+        // ======================================================================
+        //  🆕 [v16.5.117] ইনবক্স (দুই দিকের নোটিফিকেশন) + রিকোয়েস্ট/কমেন্ট কথোপকথন + মেনুর লাল "নতুন" সংখ্যা + "পাঠানো" চিহ্ন (sent_marks)
+        //  দুই প্যানেলে হুবহু একই কোড (PANEL = 'u')
+        // ======================================================================
+        (() => {
+            const PANEL = 'u';
+            const lc = s => String(s || '').trim().toLowerCase();
+            const me = () => (window.currentUser && window.currentUser.email) ? lc(window.currentUser.email) : '';
+            const isAdm = () => { try { return !!isAdminUser(); } catch (e) { return false; } };
+            const FS = () => (typeof window._firestore !== 'undefined' && window._firestoreDb) ? window._firestore : null;
+            const bn = n => { try { return toBengaliNum(n); } catch (e) { return String(n); } };
+            const esc = s => escapeHtml(String(s == null ? '' : s));
+            const myName = () => { try { const u = (typeof userList !== 'undefined' ? userList : []).find(x => lc(x.email) === me()); return (u && u.displayName) || (window.currentUser && window.currentUser.displayName) || me().split('@')[0]; } catch (e) { return me().split('@')[0]; } };
+            const ls = { g: (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : v; } catch (e) { return d; } }, s: (k, v) => { try { localStorage.setItem(k, v); } catch (e) { } } };
+            const bell = () => { if (PANEL !== 'a') return; try { const b = document.getElementById('btn-notify'); if (!b) return; let d = b.querySelector('.mf-bell-dot'); const n = window.mfInboxUnread ? window.mfInboxUnread() : 0; if (n > 0) { if (!d) { d = document.createElement('span'); d.className = 'mf-bell-dot'; d.style.cssText = 'position:absolute;top:2px;right:2px;min-width:16px;height:16px;padding:0 3px;border-radius:999px;background:#d32f2f;color:#fff;font-size:9.5px;font-weight:700;display:flex;align-items:center;justify-content:center;line-height:1;'; b.appendChild(d); } d.textContent = n > 99 ? '99+' : bn(n); } else if (d) d.remove(); } catch (e) { } };
+            const rerender = () => { try { renderTabs(); } catch (e) { } try { if (currentTab === 'users') renderMain(); } catch (e) { } bell(); };
+            const ago = (iso) => { try { const d = (Date.now() - new Date(iso).getTime()) / 60000; if (d < 1) return 'এইমাত্র'; if (d < 60) return bn(Math.floor(d)) + ' মিনিট আগে'; if (d < 1440) return bn(Math.floor(d / 60)) + ' ঘণ্টা আগে'; return bn(Math.floor(d / 1440)) + ' দিন আগে'; } catch (e) { return ''; } };
+
+            // ---------- ১) ইনবক্স: পাঠানো (অফলাইনে কিউতে থাকে) ----------
+            const QK = 'mf_ibx_q_' + PANEL;
+            const qGet = () => { try { return JSON.parse(ls.g(QK, '[]')) || []; } catch (e) { return []; } };
+            const qSet = a => ls.s(QK, JSON.stringify(a.slice(-50)));
+            const rawSend = async (it) => { const F = FS(); await F.addDoc(F.collection(window._firestoreDb, 'inbox'), it); };
+            const flushQ = async () => {
+                if (!FS() || !me()) return;
+                const q = qGet(); if (!q.length) return;
+                qSet([]);
+                for (const it of q) { if (lc(it.from) !== me()) continue; try { await rawSend(it); } catch (e) { qSet(qGet().concat([it])); } }
+            };
+            window.mfInboxSend = async (o) => {
+                try {
+                    if (!me()) return false;
+                    const to = o.to === 'admin' ? 'admin' : lc(o.to); if (!to) return false;
+                    const it = { to, from: me(), fromName: myName(), type: o.type || 'info', title: String(o.title || '').slice(0, 120), body: String(o.body || '').slice(0, 600), ref: o.ref || '', tab: o.tab || '', at: new Date().toISOString(), pushed: false };
+                    if (!FS()) { qSet(qGet().concat([it])); return false; }
+                    try { await rawSend(it); return true; } catch (e) { qSet(qGet().concat([it])); return false; }
+                } catch (e) { return false; }
+            };
+            window.addEventListener('online', () => { try { flushQ(); } catch (e) { } });
+
+            // ---------- ২) ইনবক্স: গ্রহণ ----------
+            let _ibxUnsub = null, _ibx = [], _ibxFirst = true;
+            const SEEN = () => 'mf_ibx_seen_' + PANEL + '_' + me();
+            const ibxSeen = () => ls.g(SEEN(), '');
+            window.mfInboxUnread = () => { const s = ibxSeen(); return _ibx.filter(x => String(x.at) > s && lc(x.from) !== me()).length; };
+            window.mfInboxStart = () => {
+                try {
+                    const F = FS(); if (_ibxUnsub || !F || !me()) return;
+                    if (PANEL === 'a' && !isAdm()) return;
+                    flushQ();
+                    if (!ibxSeen()) ls.s(SEEN(), new Date().toISOString());
+                    const to = isAdm() ? 'admin' : me();
+                    _ibxUnsub = F.onSnapshot(F.query(F.collection(window._firestoreDb, 'inbox'), F.where('to', '==', to)), snap => {
+                        const arr = []; snap.forEach(d => arr.push(Object.assign({ id: d.id }, d.data())));
+                        arr.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+                        const prev = new Set(_ibx.map(x => x.id));
+                        const fresh = _ibxFirst ? [] : arr.filter(x => !prev.has(x.id) && lc(x.from) !== me());
+                        _ibx = arr; _ibxFirst = false;
+                        fresh.slice(0, 3).forEach(x => { try { toast('🔔 ' + x.title); } catch (e) { } });
+                        rerender();
+                    }, () => { });
+                } catch (e) { }
+            };
+            window.mfInboxStop = () => { try { if (_ibxUnsub) _ibxUnsub(); } catch (e) { } _ibxUnsub = null; _ibx = []; _ibxFirst = true; };
+            window.mfInboxOpen = () => {
+                const seenBefore = ibxSeen();
+                const items = _ibx.slice(0, 60);
+                const row = x => { const un = String(x.at) > seenBefore && lc(x.from) !== me(); return `<div data-ibx-go="${esc(x.ref || '')}|${esc(x.tab || '')}" style="padding:10px;border-bottom:1px solid #e5e5e5;cursor:pointer;${un ? 'background:#fff3f3;' : ''}"><div style="display:flex;justify-content:space-between;gap:8px;"><strong>${un ? '<span style="color:#d32f2f;">● </span>' : ''}${esc(x.title)}</strong><span class="small muted" style="white-space:nowrap;">${esc(ago(x.at))}</span></div>${x.body ? `<div class="small" style="margin-top:3px;white-space:pre-line;">${esc(x.body)}</div>` : ''}</div>`; };
+                openModal(`<h3 style="margin:0 0 8px;">🔔 ইনবক্স</h3><div style="max-height:60vh;overflow:auto;">${items.length ? items.map(row).join('') : '<div class="small muted" style="padding:16px;text-align:center;">কোনো নোটিফিকেশন নেই।</div>'}</div><div style="text-align:right;margin-top:10px;"><button type="button" class="btn btn-outline" id="ibx-close">বন্ধ করুন</button></div>`, (m) => {
+                    const root = (m && m.querySelector) ? m : document;
+                    const c = root.querySelector('#ibx-close') || document.getElementById('ibx-close'); if (c) c.onclick = closeModal;
+                    root.querySelectorAll('[data-ibx-go]').forEach(el => el.addEventListener('click', () => {
+                        const [ref, tab] = el.getAttribute('data-ibx-go').split('|'); closeModal();
+                        if (ref && ref.indexOf(':') > 0) { const [k, id] = ref.split(':'); try { if (window.goToTab) window.goToTab('users'); } catch (e) { } setTimeout(() => window.mfConvOpen(k, id), 150); }
+                        else if (tab) { try { window.goToTab(tab); } catch (e) { } }
+                    }));
+                });
+                const newest = _ibx.length ? String(_ibx[0].at) : '';
+                const now = new Date().toISOString(); ls.s(SEEN(), newest > now ? newest : now);
+                rerender();
+            };
+
+            // ---------- ৩) রিকোয়েস্ট/কমেন্ট কথোপকথন ----------
+            const REQ_TYPES = { password_change: '🔑 পাসওয়ার্ড পরিবর্তন', email_change: '✉️ ইমেইল পরিবর্তন', account_activation: '✅ অ্যাকাউন্ট সক্রিয়করণ', wrong_entry: '✏️ ভুল এন্ট্রি সংশোধন', missing_entry: '💰 টাকা দিয়েছি, এন্ট্রি নেই', info_change: '👤 তথ্য পরিবর্তন', other: '📝 অন্যান্য' };
+            window.mfReqType = t => REQ_TYPES[t] || esc(t);
+            const ST = { pending: ['🆕 নতুন', '#b26a00'], seen: ['👁 দেখা হয়েছে', '#1565c0'], processing: ['⏳ প্রক্রিয়াধীন', '#6a1b9a'], approved: ['✅ সম্পন্ন', '#2e7d32'], denied: ['❌ বাতিল', '#c62828'] };
+            window.mfIsOpenReq = r => ['pending', 'seen', 'processing'].indexOf((r && r.status) || 'pending') >= 0;
+            window.mfStatusChip = r => { const s = ST[(r && r.status) || 'pending'] || ST.pending; return `<span style="display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:700;color:#fff;background:${s[1]};">${s[0]}</span>`; };
+            const listOf = k => k === 'requests' ? userRequestsCache : userCommentsCache;
+            const convOf = (k, it) => {
+                const out = [{ by: 'user', name: it.displayName || it.email, text: k === 'requests' ? (it.data || '') : (it.text || ''), at: it.createdAt }];
+                let th = Array.isArray(it.thread) ? it.thread : [];
+                if (!th.length && k === 'comments' && it.reply) th = [{ by: 'admin', name: 'অ্যাডমিন', text: it.reply, at: it.repliedAt }];
+                return out.concat(th);
+            };
+            const lastOther = (k, it, adm) => {   // অন্য পক্ষের সর্বশেষ কার্যক্রমের সময়
+                let t = '';
+                convOf(k, it).forEach(m => { if ((m.by === 'admin') !== adm && String(m.at || '') > t) t = String(m.at || ''); });
+                if (!adm && it.respondedAt && String(it.respondedAt) > t) t = String(it.respondedAt);
+                return t;
+            };
+            const CV = () => 'mf_cv_seen_' + PANEL + '_' + me();
+            const cvGet = () => { try { return JSON.parse(ls.g(CV(), '{}')) || {}; } catch (e) { return {}; } };
+            const BASE = () => { const k = 'mf_cv_base_' + PANEL + '_' + me(); let b = ls.g(k, ''); if (!b) { b = new Date().toISOString(); ls.s(k, b); } return b; };
+            const convUnread = (k, it) => { const adm = isAdm(); const lo = lastOther(k, it, adm); if (!lo) return false; const s = cvGet()[k + ':' + it.id] || BASE(); return lo > s; };
+            window.mfConvDot = (k, it) => convUnread(k, it) ? '<span style="display:inline-block;min-width:8px;height:8px;border-radius:50%;background:#d32f2f;margin-left:4px;vertical-align:middle;"></span>' : '';
+            window.mfConvAge = (it) => { try { if (!window.mfIsOpenReq(it)) return ''; const d = (Date.now() - new Date(it.createdAt).getTime()) / 86400000; return d >= 3 ? ` <span style="color:#d32f2f;font-weight:700;font-size:11px;">⏰ ${bn(Math.floor(d))} দিন ধরে অপেক্ষমান</span>` : ''; } catch (e) { return ''; } };
+            const markSeen = (k, it) => { const o = cvGet(); const lo = lastOther(k, it, isAdm()); o[k + ':' + it.id] = lo > new Date().toISOString() ? lo : new Date().toISOString(); ls.s(CV(), JSON.stringify(o)); };
+            window.mfConvUnreadCount = () => {
+                try {
+                    if (!me()) return 0; const adm = isAdm(); let mk = 0; try { mk = readMarkers.users ? new Date(readMarkers.users).getTime() : 0; } catch (e) { }
+                    const mks = new Date(mk).toISOString(), seen = cvGet(), base = BASE(); let n = 0;
+                    ['requests', 'comments'].forEach(k => listOf(k).forEach(it => { const lo = lastOther(k, it, adm); if (!lo) return; const s = seen[k + ':' + it.id] || base; if (lo > s && lo > mks) n++; }));
+                    return n;
+                } catch (e) { return 0; }
+            };
+            const seedThread = (k, it) => { const th = Array.isArray(it.thread) ? it.thread.slice() : []; if (!th.length && k === 'comments' && it.reply) th.push({ by: 'admin', name: 'অ্যাডমিন', text: it.reply, at: it.repliedAt || it.createdAt }); return th; };
+            const itemLabel = (k, it) => k === 'requests' ? window.mfReqType(it.type) : '💬 কমেন্ট';
+            window.mfThreadAdd = async (k, id, text, extra) => {
+                const it = listOf(k).find(x => x.id === id); if (!it) throw new Error('পাওয়া যায়নি');
+                const adm = isAdm(), now = new Date().toISOString();
+                const th = seedThread(k, it); th.push(Object.assign({ by: adm ? 'admin' : 'user', name: myName(), text: String(text).slice(0, 1000), at: now }, extra || {}));
+                const patch = { thread: th, lastAt: now, lastBy: adm ? 'admin' : 'user' };
+                if (adm && k === 'comments') { patch.reply = String(text).slice(0, 1000); patch.repliedAt = now; patch.repliedBy = me(); }
+                if (extra && extra.patch) { Object.assign(patch, extra.patch); delete th[th.length - 1].patch; }
+                const F = FS(); if (!F) throw new Error('Firebase নেই');
+                await F.updateDoc(F.doc(window._firestoreDb, k, id), patch);
+                Object.assign(it, patch);
+                if (adm) window.mfInboxSend({ to: it.email, type: 'reply', title: (extra && extra.title) || ('💬 ' + itemLabel(k, it) + ' — অ্যাডমিনের বার্তা'), body: String(text).slice(0, 200), ref: k + ':' + id, tab: 'users' });
+                else window.mfInboxSend({ to: 'admin', type: 'reply', title: '💬 ' + myName() + ' — নতুন বার্তা (' + itemLabel(k, it) + ')', body: String(text).slice(0, 200), ref: k + ':' + id, tab: 'users' });
+            };
+            window.mfSetStatus = async (k, id, status, note) => {
+                const it = listOf(k).find(x => x.id === id); if (!it || !isAdm()) return;
+                const now = new Date().toISOString(), lbl = ST[status][0], th = seedThread(k, it);
+                if (status !== 'seen' || note) th.push({ by: 'admin', name: myName(), text: '[' + lbl + ']' + (note ? ' ' + note : ''), at: now, kind: 'status', status });
+                const patch = { status, respondedAt: now, respondedBy: me(), statusNote: note || '', thread: th, lastAt: now, lastBy: 'admin' };
+                const F = FS(); if (!F) throw new Error('Firebase নেই');
+                await F.updateDoc(F.doc(window._firestoreDb, k, id), patch);
+                Object.assign(it, patch);
+                window.mfInboxSend({ to: it.email, type: 'status', title: itemLabel(k, it) + ' — ' + lbl, body: note || '', ref: k + ':' + id, tab: 'users' });
+            };
+            const CANNED = ['আপনার অনুরোধটি পেয়েছি, দেখছি।', 'এন্ট্রিটি সংশোধন করা হয়েছে।', 'অনুগ্রহ করে মোবাইল নম্বরসহ আরও তথ্য দিন।', 'ধন্যবাদ, বিষয়টি সমাধান হয়েছে।'];
+            window.mfConvOpen = (k, id) => {
+                const it = listOf(k).find(x => x.id === id); if (!it) { toast('পাওয়া যায়নি'); return; }
+                const adm = isAdm();
+                if (adm && k === 'requests' && (it.status || 'pending') === 'pending') { window.mfSetStatus(k, id, 'seen').then(rerender).catch(() => { }); }
+                const bubbles = () => { const cur = listOf(k).find(x => x.id === id) || it; return convOf(k, cur).map(m => { const mine = (m.by === 'admin') === adm; const st = m.kind === 'status'; return `<div style="display:flex;justify-content:${st ? 'center' : (mine ? 'flex-end' : 'flex-start')};margin:6px 0;"><div style="max-width:82%;padding:7px 11px;border-radius:12px;${st ? 'background:#eee;font-size:12px;' : (mine ? 'background:#dcf8c6;' : 'background:#fff;border:1px solid #ddd;')}"><div class="small muted" style="font-size:10.5px;">${m.by === 'admin' ? '👑 ' : ''}${esc(m.name || '')} · ${esc(ago(m.at))}</div><div style="white-space:pre-line;">${esc(m.text)}</div></div></div>`; }).join(''); };
+                const head = () => { const cur = listOf(k).find(x => x.id === id) || it; return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;"><strong>${esc(itemLabel(k, cur))}</strong>${k === 'requests' ? window.mfStatusChip(cur) : ''}</div><div class="small muted">${esc(cur.displayName || '')} · ${esc(cur.email || '')} · ${esc(fmtDate(cur.createdAt))}</div>`; };
+                const admBar = (adm && k === 'requests') ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0;"><button type="button" class="btn btn-outline btn-sm" data-cv-st="processing">⏳ প্রক্রিয়াধীন</button><button type="button" class="btn btn-success btn-sm" data-cv-st="approved">✅ সম্পন্ন</button><button type="button" class="btn btn-danger btn-sm" data-cv-st="denied">❌ বাতিল (কারণসহ)</button></div>` : '';
+                const canned = adm ? `<div style="display:flex;gap:5px;flex-wrap:wrap;margin:6px 0;">${CANNED.map((c, i) => `<button type="button" class="btn btn-outline btn-sm" data-cv-can="${i}" style="font-size:11px;">${esc(c.slice(0, 22))}…</button>`).join('')}</div>` : '';
+                openModal(`<h3 style="margin:0 0 6px;">💬 কথোপকথন</h3><div id="mf-cv-head">${head()}</div>${admBar}<div id="mf-conv-body" style="max-height:44vh;overflow:auto;background:#f4f4f0;padding:8px;border-radius:8px;margin:8px 0;">${bubbles()}</div>${canned}<textarea id="mf-cv-text" rows="2" placeholder="বার্তা লিখুন..." style="width:100%;"></textarea><div style="display:flex;justify-content:space-between;margin-top:8px;"><button type="button" class="btn btn-outline" id="mf-cv-close">বন্ধ করুন</button><button type="button" class="btn btn-primary" id="mf-cv-send">📤 পাঠান</button></div>`, (m) => {
+                    const root = (m && m.querySelector) ? m : document, $ = s => root.querySelector(s) || document.querySelector(s);
+                    const paint = () => { const b = $('#mf-conv-body'); if (!b) return false; const sig = JSON.stringify((listOf(k).find(x => x.id === id) || {}).thread || []) + ((listOf(k).find(x => x.id === id) || {}).status || ''); if (sig !== paint.sig) { paint.sig = sig; b.innerHTML = bubbles(); $('#mf-cv-head').innerHTML = head(); b.scrollTop = b.scrollHeight; } return true; };
+                    paint.sig = ''; paint(); markSeen(k, it); setTimeout(rerender, 50);
+                    const iv = setInterval(() => { if (!paint()) clearInterval(iv); else markSeen(k, listOf(k).find(x => x.id === id) || it); }, 1500);
+                    $('#mf-cv-close').onclick = () => { clearInterval(iv); closeModal(); rerender(); };
+                    const send = async (text) => { text = String(text || '').trim(); if (!text) { toast('বার্তা লিখুন'); return; } try { await window.mfThreadAdd(k, id, text); $('#mf-cv-text').value = ''; paint(); toast('✅ পাঠানো হয়েছে'); } catch (e) { toast('❌ পাঠানো যায়নি — ' + (e.message || e)); } };
+                    $('#mf-cv-send').onclick = () => send($('#mf-cv-text').value);
+                    root.querySelectorAll('[data-cv-can]').forEach(b => b.onclick = () => { $('#mf-cv-text').value = CANNED[+b.getAttribute('data-cv-can')]; });
+                    root.querySelectorAll('[data-cv-st]').forEach(b => b.onclick = async () => {
+                        const st = b.getAttribute('data-cv-st'); let note = $('#mf-cv-text').value.trim();
+                        if (st === 'denied' && !note) { toast('বাতিলের কারণ নিচের ঘরে লিখুন'); return; }
+                        try { await window.mfSetStatus(k, id, st, note); $('#mf-cv-text').value = ''; paint(); rerender(); toast('✅ অবস্থা হালনাগাদ'); } catch (e) { toast('❌ ' + (e.message || e)); }
+                    });
+                });
+            };
+            document.addEventListener('click', ev => { const b = ev.target.closest && ev.target.closest('[data-conv]'); if (!b) return; const [k, id] = b.getAttribute('data-conv').split(':'); window.mfConvOpen(k, id); });
+
+            // ---------- ৪) মেনুর লাল "নতুন" সংখ্যা (এন্ট্রির আঙুলের ছাপ ধরে, ডিভাইস-ভিত্তিক) ----------
+            const NB = () => 'mf_nb_v1_' + PANEL + '_' + me();
+            const h32 = s => { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return (h >>> 0).toString(36); };
+            const fpOf = (key) => {
+                const my = me(), out = [];
+                const amt = r => Number(r && r.amount) || 0;
+                const own = r => r && lc(r.addedByEmail) === my;
+                const add = (id, extra) => out.push(h32(String(id) + ':' + extra));
+                const S = (typeof state !== 'undefined' && state) || {};
+                if (key === 'monthly') (S.monthly || []).forEach(r => { if (r && amt(r) > 0 && !own(r)) add(r.id, amt(r)); });
+                else if (key === 'yearly') (S.yearly || []).forEach(r => { if (r && !own(r)) add(r.id, amt(r)); });
+                else if (key === 'expenses') (S.expenses || []).forEach(r => { if (r && !own(r)) add(r.id, amt(r)); });
+                else if (key === 'members') (S.members || []).forEach(m => { if (m) add(m.id, (m.name || '') + (m.idNumber || '')); });
+                else if (key === 'announcements') (S.announcements || []).forEach(a => { if (a) add(a.id, (a.title || '') + (a.createdAt || '')); });
+                else if (key === 'donations') {
+                    let mm = null; try { mm = (typeof findMyMemberRecord === 'function') ? findMyMemberRecord() : null; } catch (e) { }
+                    if (mm) { (S.monthly || []).forEach(r => { if (r && r.memberId === mm.id && amt(r) > 0 && !own(r)) add(r.id, amt(r)); }); (S.yearly || []).forEach(r => { if (r && r.memberId === mm.id && !own(r)) add(r.id, amt(r)); }); }
+                }
+                return out;
+            };
+            const NBK = ['monthly', 'yearly', 'expenses', 'members', 'announcements', 'donations'];
+            let _nbSeen = null;
+            const nbLoad = () => { if (_nbSeen) return _nbSeen; try { _nbSeen = JSON.parse(ls.g(NB(), 'null')); } catch (e) { _nbSeen = null; } return _nbSeen; };
+            const dataReady = () => { try { return ((state.members || []).length + (state.monthly || []).length + (state.yearly || []).length) > 0; } catch (e) { return false; } };
+            const nbSave = () => ls.s(NB(), JSON.stringify(_nbSeen));
+            const nbEnsure = () => {
+                if (!me() || !dataReady()) return false;
+                if (!nbLoad()) { _nbSeen = {}; NBK.forEach(k => { _nbSeen[k] = fpOf(k); }); nbSave(); }
+                return true;
+            };
+            window.mfNewCount = (key) => {
+                try {
+                    if (NBK.indexOf(key) < 0 || !nbEnsure()) return 0;
+                    const seen = new Set(_nbSeen[key] || []); let n = 0; fpOf(key).forEach(f => { if (!seen.has(f)) n++; }); return n;
+                } catch (e) { return 0; }
+            };
+            window.mfNewMark = (key) => { try { if (NBK.indexOf(key) < 0 || !nbEnsure()) return; _nbSeen[key] = fpOf(key); nbSave(); } catch (e) { } };
+            window.mfNewTotal = () => { let n = 0; NBK.forEach(k => { n += window.mfNewCount(k); }); return n; };
+            window.mfNewBadge = (key, cls) => { const n = window.mfNewCount(key); return n > 0 ? `<span class="${cls || 'notice-count-badge'} mf-newb" style="background:#d32f2f;color:#fff;">${bn(n > 99 ? 99 : n)}${n > 99 ? '+' : ''}</span>` : ''; };
+
+            // ---------- ৫) "পাঠানো" চিহ্ন: sent_marks ----------
+            let _smUnsub = null, _smCache = {}, _smSaveT = null;
+            const rnoW = () => { if (!state.settings) state.settings = {}; const m = state.settings.receiptNoMap = (state.settings.receiptNoMap && typeof state.settings.receiptNoMap === 'object') ? state.settings.receiptNoMap : {}; if (!m.notified || typeof m.notified !== 'object') m.notified = {}; return m; };
+            const viasOf = (nt) => (nt && Array.isArray(nt.vias) && nt.vias.length) ? nt.vias : String((nt && nt.via) || '').split(/\s*,\s*/).filter(Boolean);
+            window.mfSentApply = () => {
+                try {
+                    const ids = Object.keys(_smCache); if (!ids.length) return false;
+                    const m = rnoW(); let ch = false;
+                    ids.forEach(id => { const c = _smCache[id], old = viasOf(m.notified[id]); const add = (c.vias || []).filter(v => old.indexOf(v) < 0); if (!add.length && m.notified[id]) return; const vs = old.concat(add); m.notified[id] = { via: vs.join(', '), vias: vs, at: (m.notified[id] && m.notified[id].at) || c.at || new Date().toISOString() }; ch = true; });
+                    if (ch && isAdm()) { clearTimeout(_smSaveT); _smSaveT = setTimeout(() => { try { saveState(); } catch (e) { } }, 1500); }
+                    return ch;
+                } catch (e) { return false; }
+            };
+            window.mfSentPublish = async (ids, via) => {
+                try {
+                    const F = FS(); if (!F || !me() || isAdm()) return;
+                    const m = rnoW(), upd = {};
+                    (Array.isArray(ids) ? ids : [ids]).forEach(id => { if (!id) return; const vs = viasOf(m.notified[id]); if (vs.indexOf(via) < 0) vs.push(via); upd[id] = { vias: vs, at: new Date().toISOString() }; _smCache[id] = upd[id]; });
+                    if (!Object.keys(upd).length) return;
+                    await F.setDoc(F.doc(window._firestoreDb, 'sent_marks', me()), { m: upd, email: me(), updatedAt: new Date().toISOString() }, { merge: true });
+                } catch (e) { console.error('sent_marks', e); }
+            };
+            window.mfSentStart = () => {
+                try {
+                    const F = FS(); if (_smUnsub || !F || !me()) return;
+                    _smUnsub = F.onSnapshot(F.collection(window._firestoreDb, 'sent_marks'), snap => {
+                        const c = {}; snap.forEach(d => { const mm = (d.data() || {}).m || {}; Object.keys(mm).forEach(id => { const o = c[id] || { vias: [], at: mm[id].at }; (mm[id].vias || []).forEach(v => { if (o.vias.indexOf(v) < 0) o.vias.push(v); }); c[id] = o; }); });
+                        _smCache = c; if (window.mfSentApply()) { try { renderMain(); } catch (e) { } }
+                    }, () => { });
+                } catch (e) { }
+            };
+
+            // ---------- ৬) এন্ট্রি-সারাংশ → এডমিনের ইনবক্সে ----------
+            window.mfEntrySummary = (ops, okMsg) => {
+                try {
+                    if (isAdm() || !me()) return;
+                    let n = 0, total = 0, names = [], kinds = {};
+                    const take = (k, arr) => (arr || []).forEach(it => { if (!it) return; const a = Number(it.amount) || 0; if ((k === 'monthly' || k === 'yearly' || k === 'expenses') && a > 0) { n++; total += a; kinds[k] = (kinds[k] || 0) + 1; } else if (k !== 'monthly' && k !== 'yearly' && k !== 'expenses') { n++; kinds[k] = (kinds[k] || 0) + 1; } });
+                    Object.keys(ops.append || {}).forEach(k => take(k, ops.append[k])); Object.keys(ops.upsert || {}).forEach(k => take(k, ops.upsert[k]));
+                    (ops.log || []).slice(0, 6).forEach(l => { const t = l && (l.desc || l.description || l.text); if (t) names.push('• ' + String(t).slice(0, 110)); });
+                    if (!n && !names.length) return;
+                    const KN = { monthly: 'মাসিক', yearly: 'এককালীন', expenses: 'ব্যয়', notices: 'নোটিশ', announcements: 'ঘোষণা' };
+                    const kt = Object.keys(kinds).map(k => (KN[k] || k) + ' ' + bn(kinds[k]) + 'টি').join(', ');
+                    window.mfInboxSend({ to: 'admin', type: 'entry', title: '💰 ' + myName() + ' — ' + bn(n || names.length) + 'টি এন্ট্রি' + (total ? ' · মোট ' + fmtMoney(total) : ''), body: (kt ? kt + '\n' : '') + names.join('\n'), tab: 'monthly' });
+                } catch (e) { }
+            };
+
+            document.addEventListener('click', ev => { if (ev.target.closest && ev.target.closest('[data-ibx-open]')) window.mfInboxOpen(); });
+
+            // ---------- শুরু ----------
+            window.mfV117Start = () => { try { window.mfInboxStart(); window.mfSentStart(); } catch (e) { } };
+            setTimeout(() => { if (window.currentUser) window.mfV117Start(); }, 2500);
+            setInterval(() => { if (window.currentUser && !_ibxUnsub) window.mfV117Start(); }, 5000);
+        })();
+
         window.mfNotifyAdd = (ids, via) => {
             if (!state.settings) state.settings = {};
             const m = state.settings.receiptNoMap = (state.settings.receiptNoMap && typeof state.settings.receiptNoMap === 'object') ? state.settings.receiptNoMap : {};
@@ -6314,6 +6581,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                 const old = _notVias(m.notified[id]), vs = old.indexOf(via) >= 0 ? old : old.concat([via]);
                 m.notified[id] = { via: vs.join(', '), vias: vs, at: new Date().toISOString() };
             });
+            try { window.mfSentPublish(ids, via); } catch (e) { }   // 🆕 [v16.5.117] ক্লাউডে sent_marks-এ জমা — এডমিনও দেখবে
             try { saveState(); } catch (e) { }
             try { renderMain(); } catch (e) { }
         };
@@ -6903,6 +7171,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             if (typeof window.cloudCommit !== 'function') { toast('❌ Firebase লোড হয়নি — একটু পরে আবার চেষ্টা করুন'); return false; }
             try {
                 await window.cloudCommit(ops);
+                try { window.mfEntrySummary(ops, okMsg); } catch (e) { }   // 🆕 [v16.5.117] এডমিনের ইনবক্সে এন্ট্রি-সারাংশ
                 if (okMsg) toast(okMsg);
                 return true;
             } catch (e) {
@@ -7017,15 +7286,13 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             const total = memberTotal(m.id);
             const count = memberDonationCount(m.id);
             // রিসিপ্টের টেবিলে লেখা কাটা/... হবে না — সাধারণ এক্সপোর্ট-CSS-এর nowrap/ellipsis এখানে বাতিল
-            const cellStyle = 'white-space:normal !important;max-width:none !important;overflow:visible !important;text-overflow:clip !important;word-break:break-word;';
-            const ncol = cfg.showDate ? 3 : 2;
-            const dateTd = (r) => cfg.showDate ? `<td style="${cellStyle}">${fmtDate(r.date)}</td>` : '';
-            const rowsHtml = [
-                ...monthlyRows.map(r => `<tr><td style="${cellStyle}">মাসিক — ${escapeHtml((typeof txnMonthLabel === 'function' ? txnMonthLabel(r.month) : r.month) || r.month || '')}</td>${dateTd(r)}<td class="num" style="${cellStyle}">${fmtMoney(r.amount)}</td></tr>`),
-                ...yearlyRows.map(r => `<tr><td style="${cellStyle}">বার্ষিক</td>${dateTd(r)}<td class="num" style="${cellStyle}">${fmtMoney(r.amount)}</td></tr>`)
-            ].join('');
+            const cellStyle = 'white-space:normal !important;max-width:none !important;overflow:visible !important;text-overflow:clip !important;overflow-wrap:break-word;word-break:normal;';
             const fs = cfg.fontSize;
-            const thStyle = `text-align:left;border-bottom:1px solid #ccc;padding:6px;${cellStyle}`;
+            const stRows = [
+                ...monthlyRows.map(r => ({ c: { item: 'মাসিক — ' + escapeHtml((typeof txnMonthLabel === 'function' ? txnMonthLabel(r.month) : r.month) || r.month || ''), date: fmtDate(r.date), amount: fmtMoney(r.amount) } })),
+                ...yearlyRows.map(r => ({ c: { item: 'বার্ষিক', date: fmtDate(r.date), amount: fmtMoney(r.amount) } }))
+            ];
+            const stTable = window.rcRenderTable(cfg, 'statement', stRows, { fs, mb: 16 });
             return `
                 <div class="export-header">
                   <div class="em-mark">${markHtml}</div>
@@ -7043,11 +7310,8 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                     ${cfg.showId && m.idNumber ? `<div><strong>আইডি নং:</strong> ${escapeHtml(m.idNumber)}</div>` : ''}
                     ${cfg.showMobile && m.mobile ? `<div><strong>মোবাইল:</strong> ${escapeHtml(m.mobile)}</div>` : ''}
                   </div>
-                  <table style="width:100%;border-collapse:collapse;margin-bottom:16px;table-layout:auto;font-size:${fs}px !important;">
-                    <thead><tr><th style="${thStyle}">${escapeHtml(cfg.labelItem)}</th>${cfg.showDate ? `<th style="${thStyle}">${escapeHtml(cfg.labelDate)}</th>` : ''}<th class="num" style="${thStyle}text-align:right;">${escapeHtml(cfg.labelAmount)}</th></tr></thead>
-                    <tbody>${rowsHtml || `<tr><td colspan="${ncol}" style="padding:6px;${cellStyle}">কোনো তথ্য নেই</td></tr>`}</tbody>
-                  </table>
-                  ${cfg.showTotal ? `<div class="pill active" style="font-size:${fs}px;padding:10px 18px;display:inline-block;">মোট অনুদান: ${fmtMoney(total)} &nbsp;·&nbsp; মোট ${count} বার</div>` : ''}
+                  ${stTable}
+                  ${cfg.showTotal ? `<div class="pill active" style="font-size:${fs}px;padding:10px 18px;display:inline-block;">মোট অনুদান: ${fmtMoney(total)} &nbsp;·&nbsp; মোট ${toBengaliNum(count)} বার</div>` : ''}
                   ${cfg.showThanks && cfg.thanks ? `<div style="margin-top:20px;font-size:${Math.max(11, fs - 0.5)}px;line-height:1.9;color:var(--ink,#2c2620);white-space:pre-wrap;">${escapeHtml(cfg.thanks)}</div>` : ''}
                   ${cfg.extra ? `<div style="margin-top:14px;padding-top:10px;border-top:1px dashed #cdbf9b;font-size:${Math.max(11, fs - 1)}px;line-height:1.8;white-space:pre-wrap;">${escapeHtml(cfg.extra)}</div>` : ''}
                 </div>
@@ -7132,11 +7396,17 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             // rows: [{ c: { colId: আগে-থেকে-escape-করা html }, hl: bool }]
             window.rcRenderTable = (cfg, key, rows, o) => {
                 o = o || {};
-                const cols = cfg.tables[key].cols.filter(c => c.show); if (!cols.length) return '';
+                let cols = cfg.tables[key].cols.filter(c => c.show); if (!cols.length) return '';
                 const ts = cfg.tableStyle, fs = (o.fs || cfg.fontSize) + ts.fsDelta, pad = ts.pad;
-                const cell = 'white-space:normal !important;max-width:none !important;overflow:visible !important;text-overflow:clip !important;word-break:break-word;';
+                const cell = 'white-space:normal !important;max-width:none !important;overflow:visible !important;text-overflow:clip !important;overflow-wrap:break-word;word-break:normal;';
                 const bd = ts.border === 'grid' ? 'border:1px solid #cfc6aa;' : ts.border === 'line' ? 'border-bottom:1px solid #e6dfc9;' : '';
                 const thBd = ts.border === 'grid' ? 'border:1px solid #cfc6aa;' : ts.border === 'line' ? 'border-bottom:1.5px solid #bbb;' : '';
+                // 🔧[v16.5.119] প্রস্থ সেট না থাকলে ব্রাউজারের auto-layout "খাত" কলাম সরু করে লেখা ভেঙে দিত — তাই ডিফল্ট শতকরা প্রস্থ
+                if (!cols.some(c => c.width > 0) && cols.length >= 2) {
+                    const wt = cols.map(c => (c.id === 'item' || c.id === 'month') ? 40 : c.id === 'amount' ? 20 : 0);
+                    const rest = 100 - wt.reduce((a, b) => a + b, 0), zeros = wt.filter(x => !x).length;
+                    cols = cols.map((c, i) => Object.assign({}, c, { width: wt[i] || Math.floor(rest / Math.max(1, zeros)) }));
+                }
                 const anyW = cols.some(c => c.width > 0);
                 const colgroup = '<colgroup>' + cols.map(c => c.width > 0 ? `<col style="width:${c.width}%">` : '<col>').join('') + '</colgroup>';
                 const th = cols.map(c => `<th style="text-align:${c.align};padding:${pad}px ${pad + 2}px;${thBd}${ts.headBg ? 'background:' + ts.headBg + ';' : ''}${ts.headColor ? 'color:' + ts.headColor + ';' : ''}${cell}">${escapeHtml(c.label)}</th>`).join('');
@@ -7230,7 +7500,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             const markHtml = cfg.showLogo ? await logoMarkHtmlAsync(s) : '';
             const time = new Date().toLocaleString('bn-BD', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
             const fs = cfg.fontSize;
-            const cell = 'white-space:normal !important;max-width:none !important;overflow:visible !important;text-overflow:clip !important;word-break:break-word;';
+            const cell = 'white-space:normal !important;max-width:none !important;overflow:visible !important;text-overflow:clip !important;overflow-wrap:break-word;word-break:normal;';
             const td = (v, x) => `<td style="padding:6px 8px;border-bottom:1px solid #e6dfc9;${cell}${x || ''}">${v}</td>`;
             const th = (v, x) => `<th style="text-align:left;border-bottom:1px solid #ccc;padding:6px 8px;${cell}${x || ''}">${v}</th>`;
             const kv = (label, val) => (val === undefined || val === null || val === '') ? '' : `<tr>${td(escapeHtml(label), 'color:#6b6350;width:' + cfg.tableStyle.kvWidth + '%;')}${td('<strong>' + escapeHtml(val) + '</strong>')}</tr>`;
@@ -8986,7 +9256,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
         //  🆕 আনরিড ব্যাজ সিস্টেম (নোটিশ/নোটিফিকেশন/ইউজার/চ্যাট) — WhatsApp-এর মতো:
         //  মেনু দেখলে ব্যাজ মুছে যাবে, নতুন কিছু এলে আবার সংখ্যা দেখাবে
         // ======================================================================
-        const READ_MARKERS_KEY = 'mahfil_read_markers_v1';
+        const READ_MARKERS_KEY = 'mahfil_read_markers_v1u';
         let readMarkers = (() => { try { return JSON.parse(localStorage.getItem(READ_MARKERS_KEY) || '{}'); } catch (e) { return {}; } })();
         const saveReadMarkers = () => { try { localStorage.setItem(READ_MARKERS_KEY, JSON.stringify(readMarkers)); } catch (e) {} };
         if (!localStorage.getItem(READ_MARKERS_KEY)) {
@@ -9000,11 +9270,12 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             if (key === 'notices') return (state.notices || []).filter(n => new Date(n.createdAt || 0).getTime() > marker).length;
             if (key === 'notifications') return (state.activityLog || []).filter(l => new Date(l.timestamp || 0).getTime() > marker).length;
             if (key === 'chat') return (state.chat || []).filter(c => new Date(c.timestamp || 0).getTime() > marker).length;
-            if (key === 'users') return userRequestsCache.filter(r => r.status === 'pending' && new Date(r.createdAt || 0).getTime() > marker).length;
+            if (key === 'users') return (window.mfConvUnreadCount ? window.mfConvUnreadCount() : 0) + (window.mfInboxUnread ? window.mfInboxUnread() : 0);
             return 0;
         };
         const refreshReadStateForActiveTab = () => {
             if (['notices', 'notifications', 'chat', 'users'].includes(currentTab)) markTabRead(currentTab);
+            try { if (window.mfNewMark) window.mfNewMark(currentTab); } catch (e) { }
         };
 
         const getActionIcon = a => ({ add: '➕', edit: '✏️', delete: '🗑' } [a] || '📌');
@@ -11386,7 +11657,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             // আলাদা tableId, যাতে এই দুই টেবিলের কলাম-কাস্টমাইজেশন members/monthly/yearly
             // টেবিলগুলো থেকে স্বতন্ত্র থাকে।
             const _mdMonthlyCells = {
-                month: { label: 'মাস', thClass: 'month-cell', td: (r) => `<td class="month-cell">${escapeHtml(r.month)}</td>` },
+                month: { label: 'মাস', thClass: 'month-cell', td: (r) => `<td class="month-cell">${escapeHtml(txnMonthLabel(r.month))}</td>` },
                 date: { label: 'তারিখ', thClass: 'date-cell', td: (r) => `<td class="date-cell">${r.date ? fmtDate(r.date) : '—'}</td>` },
                 amount: { label: 'পরিমাণ', thClass: 'num', td: (r) => `<td class="num">${fmtMoney(r.amount)}</td>` },
                 method: { label: 'মেথড', td: (r) => `<td class="muted">${escapeHtml(r.method || '—')}${window.mfSentTag ? window.mfSentTag(r.id) : ''}</td>` },
@@ -11435,17 +11706,18 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                 ${myAdvance > 0 ? myStatCard('🟢', 'অগ্রিম জমা', myAdvance, 'var(--gold-700, #a67c00)') : ''}
                 ${myStatCard('💰', 'সর্বমোট অনুদান', total, 'var(--emerald-900)')}
               </div>
+              ${window.mfMyRcCard ? window.mfMyRcCard(m) : ''}
               ${myDue > 0 ? `<div style="margin-bottom:20px;font-size:12.5px;color:var(--maroon-600);font-weight:700;">🔴 বকেয়া: ${fmtMoney(myDue)} <span class="muted" style="font-weight:400;">(সর্বমোট অনুদানে যোগ করা হয়নি)</span></div>` : ''}
               <div class="card" style="margin-bottom:16px;">
                 <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-                  <strong style="font-family:var(--font-display);color:var(--emerald-900);">📅 মাসিক অনুদান (${monthly.length} টি — কোন কোন মাসে দিয়েছেন)</strong>
+                  <strong style="font-family:var(--font-display);color:var(--emerald-900);">📅 মাসিক অনুদান (${toBengaliNum(monthly.length)} টি — কোন কোন মাসে দিয়েছেন)</strong>
                   ${columnSettingsButtonHtml('member-details-monthly-yearly')}
                 </div>
                 ${monthly.length ? `<div class="table-wrap donation-table-wrap" style="margin-top:10px;"><table style="width:100%;"><thead><tr>${_mdMonthly.theadHtml}</tr></thead><tbody>${_mdMonthly.bodyHtml}</tbody><tfoot><tr style="background:var(--gold-100);"><td style="font-weight:800;color:var(--emerald-900);text-align:center;padding:12px;letter-spacing:.3px;" colspan="${_mdMonthly.visibleKeys.length || 1}">মোট: ${fmtMoney(monthlyTotal)}</td></tr></tfoot></table></div>` : '<div class="small muted" style="margin-top:8px;">কোনো মাসিক অনুদান রেকর্ড নেই।</div>'}
               </div>
               <div class="card">
                 <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-                  <strong style="font-family:var(--font-display);color:var(--emerald-900);">🎁 বার্ষিক / এককালীন অনুদান (${yearly.length} টি)</strong>
+                  <strong style="font-family:var(--font-display);color:var(--emerald-900);">🎁 বার্ষিক / এককালীন অনুদান (${toBengaliNum(yearly.length)} টি)</strong>
                   
                 </div>
                 ${yearly.length ? `<div class="table-wrap donation-table-wrap" style="margin-top:10px;"><table style="width:100%;"><thead><tr>${_mdYearly.theadHtml}</tr></thead><tbody>${_mdYearly.bodyHtml}</tbody></table></div>` : '<div class="small muted" style="margin-top:8px;">কোনো বার্ষিক/এককালীন অনুদান রেকর্ড নেই।</div>'}
@@ -11471,7 +11743,53 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             { key: 'remarks', label: 'মন্তব্য', width: 220 }
         ];
         // 🆕 "🎁 আমার অনুদান" ট্যাবের কলাম-সেটিংস বাটন ও রিসাইজ-হ্যান্ডেল ওয়্যারিং
+        // 🆕 [v16.5.103] "আমার অনুদান" থেকে রিসিপ্ট ডাউনলোড (JPG) — বিদ্যমান জেনারেটরই ব্যবহার, নতুন ডেটা লেখা হয় না
+        window.mfMyRcCard = (m) => {
+            let tx = []; try { tx = getMemberTxns(m.id); } catch (e) { }
+            const opts = tx.map((t, i) => {
+                const e = t.entry, lab = t.kind === 'monthly' ? txnMonthLabel(e.month) : 'বার্ষিক/এককালীন';
+                return `<option value="${i}">${escapeHtml(lab)} — ${fmtMoney(e.amount)}${e.date ? ' — ' + fmtDate(e.date) : ''}</option>`;
+            }).join('');
+            return `<div class="card" style="margin-bottom:16px;" id="my-rc-card">
+              <strong style="font-family:var(--font-display);color:var(--emerald-900);">🧾 রিসিপ্ট ডাউনলোড</strong>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center;">
+                <select id="my-rc-sel" style="flex:1;min-width:200px;">${opts || '<option value="">কোনো লেনদেন নেই</option>'}</select>
+                <button class="btn" id="my-rc-one" ${tx.length ? '' : 'disabled'}>⬇️ এই লেনদেনের রিসিপ্ট</button>
+                <button class="btn" id="my-rc-all">⬇️ সম্পূর্ণ হিসাব-রিসিপ্ট</button>
+              </div>
+              <div class="small muted" id="my-rc-st" style="margin-top:6px;"></div>
+            </div>`;
+        };
+        const mfMyRcWire = () => {
+            const st = document.getElementById('my-rc-st');
+            const run = async (all) => {
+                const m = findMyMemberRecord(); if (!m) return;
+                const b1 = document.getElementById('my-rc-one'), b2 = document.getElementById('my-rc-all');
+                try {
+                    if (b1) b1.disabled = true; if (b2) b2.disabled = true;
+                    if (st) st.textContent = '⏳ রিসিপ্ট তৈরি হচ্ছে…';
+                    let type = 'statement', t = null;
+                    if (!all) {
+                        const i = parseInt(document.getElementById('my-rc-sel').value, 10);
+                        t = getMemberTxns(m.id)[i]; if (!t) throw new Error('লেনদেন পাওয়া যায়নি');
+                        type = 'simple';
+                    }
+                    const show = { method: true, collector: true, thanks: true, contact: true, breakdown: false };
+                    const sigWrap = (typeof withPdfSig === 'function' && typeof resolveSig === 'function') ? (fn => withPdfSig(resolveSig('', undefined), fn)) : (fn => fn());
+                    const url = await sigWrap(() => generateJpgForType(type, m, t, show, 'money'));
+                    const a = document.createElement('a'); a.href = url;
+                    a.download = sanitizeFileName('রিসিপ্ট-' + (m.name || '') + (all ? '-হিসাব' : '')) + '.jpg';
+                    document.body.appendChild(a); a.click(); a.remove();
+                    if (st) st.textContent = '✓ ডাউনলোড হয়েছে';
+                } catch (er) { console.error(er); if (st) st.textContent = '❌ ' + (er.message || 'রিসিপ্ট তৈরি করা যায়নি'); }
+                finally { if (b1) b1.disabled = false; if (b2) b2.disabled = false; }
+            };
+            const o = document.getElementById('my-rc-one'), l = document.getElementById('my-rc-all');
+            if (o) o.addEventListener('click', () => run(false));
+            if (l) l.addEventListener('click', () => run(true));
+        };
         const afterMyInfoRender = () => {
+            try { mfMyRcWire(); } catch (e) { }
             // 🆕 [v16.5.102] "আমার অনুদান" টেবিলও এডমিনের সাজানো সদস্য-বিবরণ (member-details-monthly-yearly) কনফিগ মানে — এডমিন যেভাবে সাজাবে ইউজারও ঠিক সেভাবে দেখবে
             const btnM = document.getElementById('btn-col-settings-member-details-monthly-yearly');
             if (btnM) btnM.addEventListener('click', () =>
@@ -11555,7 +11873,9 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                 data,
                 status: 'pending',
                 createdAt: new Date().toISOString(),
+                thread: [], lastAt: new Date().toISOString(), lastBy: 'user',
             };
+            if (userRequestsCache.filter(x => x.email === req.email && window.mfIsOpenReq(x)).length >= 5) { toast('⚠️ আপনার ৫টি রিকোয়েস্ট এখনো অপেক্ষমান — আগেরগুলোর উত্তরের পর নতুন পাঠান'); throw new Error('limit'); }
             try {
                 if (typeof window._firestore === 'undefined') {
                     req.id = uid();
@@ -11567,6 +11887,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                 const docRef = await addDoc(collection(window._firestoreDb, 'requests'), req);
                 req.id = docRef.id;
                 userRequestsCache.unshift(req);
+                try { window.mfInboxSend({ to: 'admin', type: 'request', title: '📨 ' + (req.displayName || req.email) + ' — নতুন রিকোয়েস্ট', body: window.mfReqType(type).replace(/&[a-z#0-9]+;/g, '') + (typeof data === 'string' ? ': ' + data.slice(0, 120) : ''), ref: 'requests:' + docRef.id, tab: 'users' }); } catch (e) { }
             } catch (e) { console.error(e);
                 toast('রিকোয়েস্ট পাঠাতে সমস্যা'); throw e; }
         };
@@ -11581,6 +11902,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                 reply: null,
                 repliedAt: null,
                 repliedBy: null,
+                thread: [], lastAt: new Date().toISOString(), lastBy: 'user',
             };
             try {
                 if (typeof window._firestore === 'undefined') {
@@ -11593,6 +11915,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                 const docRef = await addDoc(collection(window._firestoreDb, 'comments'), cmt);
                 cmt.id = docRef.id;
                 userCommentsCache.unshift(cmt);
+                try { window.mfInboxSend({ to: 'admin', type: 'comment', title: '💬 ' + (cmt.displayName || cmt.email) + ' — নতুন কমেন্ট', body: String(text).slice(0, 160), ref: 'comments:' + docRef.id, tab: 'users' }); } catch (e) { }
             } catch (e) { console.error(e);
                 toast('কমেন্ট পোস্ট করতে সমস্যা'); throw e; }
         };
@@ -11681,7 +12004,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                         snap.forEach(d => reqs.push({ id: d.id, ...d.data() }));
                         reqs.forEach(r => {
                             const prev = userRequestsCache.find(x => x.id === r.id);
-                            if (prev && prev.status === 'pending' && r.status && r.status !== 'pending') {
+                            if (prev && prev.status === 'pending' && (r.status === 'approved' || r.status === 'denied')) {
                                 showInfoModal(
                                     r.status === 'approved' ? '✅ আপনার রিকোয়েস্ট অনুমোদিত হয়েছে' :
                                     '❌ আপনার রিকোয়েস্ট প্রত্যাখ্যাত হয়েছে',
@@ -11749,13 +12072,14 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             el.type = 'file';
             el.id = 'chat-image-input-global';
             el.accept = 'image/*';
+            el.multiple = true;
             el.style.cssText = 'position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0;';
             el.addEventListener('change', () => {
-                const file = el.files && el.files[0];
+                const files = Array.from(el.files || []);
                 el.value = '';
-                if (!file) { _chatImgLog('ফাইল-পিকার বন্ধ হয়েছে, কোনো ছবি নির্বাচিত হয়নি'); return; }
-                _chatImgLog('change ইভেন্ট এসেছে, লক্ষ্য =', _chatImagePickTarget);
-                if (_chatImagePickTarget === 'dm') sendDmImage(file); else sendChatImage(file);
+                if (!files.length) { _chatImgLog('ফাইল-পিকার বন্ধ হয়েছে, কোনো ছবি নির্বাচিত হয়নি'); return; }
+                _chatImgLog('change ইভেন্ট এসেছে, লক্ষ্য =', _chatImagePickTarget, 'ছবির সংখ্যা =', files.length);
+                if (_chatImagePickTarget === 'dm') sendDmImages(files); else sendChatImages(files);
             });
             document.body.appendChild(el);
             return el;
@@ -11782,19 +12106,29 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             return null;
         };
 
-        const sendChatImage = async (file) => {
-            const err = validateChatImageFile(file);
-            if (err) { toast('❌ ' + err); return; }
+        const sendChatImages = async (files) => {
+            const list = Array.isArray(files) ? files : (files ? [files] : []);
+            if (!list.length) return;
+            if (list.length > 10) { toast('❌ একসাথে সর্বোচ্চ ১০টি ছবি পাঠানো যাবে'); return; }
+            for (const file of list) {
+                const err = validateChatImageFile(file);
+                if (err) { toast('❌ ' + err); return; }
+            }
             const user = window.currentUser;
             if (!user) { toast('মেসেজ পাঠাতে লগইন করুন');
                 openLoginModal(); return; }
             const displayName = getProfileDisplayName(user.email, user.displayName);
-            toast('📤 ছবি পাঠানো হচ্ছে...');
+            toast(list.length === 1 ? '📤 ছবি পাঠানো হচ্ছে...' : `📤 ${toBengaliNum(list.length)}টি ছবি পাঠানো হচ্ছে...`);
             try {
                 _chatImgLog('আপলোড শুরু (Apps Script-এ পাঠানো হচ্ছে)');
-                const imageUrl = await uploadImageToDrive(file, chatImageFileTag(displayName), '', '', null, '', 'chat');
-                _chatImgLog('Drive থেকে URL এলো:', imageUrl);
-                const msg = { id: uid(), text: '', imageUrl, sender: user.email, displayName, timestamp: new Date()
+                const imageUrls = [];
+                for (let i = 0; i < list.length; i++) {
+                    const imageUrl = await uploadImageToDrive(list[i], chatImageFileTag(displayName) + (list.length > 1 ? '_' + (i + 1) : ''), '', '', null, '', 'chat');
+                    if (imageUrl) imageUrls.push(imageUrl);
+                }
+                if (!imageUrls.length) throw new Error('কোনো ছবির URL পাওয়া যায়নি');
+                _chatImgLog('Drive থেকে URL এলো:', imageUrls);
+                const msg = { id: uid(), text: '', imageUrl: imageUrls[0], imageUrls, sender: user.email, displayName, timestamp: new Date()
                         .toISOString() };
                 state.chat.push(msg);
                 saveState();
@@ -12087,7 +12421,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             if (typingNames.length === 1) typingHtml =
                 `<span class="typing-indicator">✍️ ${escapeHtml(typingNames[0])} লিখছেন<span class="typing-dots"><span></span><span></span><span></span></span></span>`;
             else if (typingNames.length > 1) typingHtml =
-                `<span class="typing-indicator">✍️ ${typingNames.length} জন লিখছেন<span class="typing-dots"><span></span><span></span><span></span></span></span>`;
+                `<span class="typing-indicator">✍️ ${toBengaliNum(typingNames.length)} জন লিখছেন<span class="typing-dots"><span></span><span></span><span></span></span></span>`;
 
             // 🆕 [চ্যাট রিডিজাইন] শুধু সংখ্যা না, সক্রিয় সদস্যদের ছবির স্ট্রিপ উপরে দেখানো —
             // নিজেকে বাদে বাকি সবার প্রোফাইলে ট্যাপ করলে সরাসরি DM শুরু হয়
@@ -12632,19 +12966,29 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
         };
 
         // 🆕 DM-এও ছবি পাঠানো — গ্রুপ চ্যাটের sendChatImage-এর অনুরূপ, একই নামকরণ প্যাটার্ন
-        const sendDmImage = async (file) => {
-            const err = validateChatImageFile(file);
-            if (err) { toast('❌ ' + err); return; }
+        const sendDmImages = async (files) => {
+            const list = Array.isArray(files) ? files : (files ? [files] : []);
+            if (!list.length) return;
+            if (list.length > 10) { toast('❌ একসাথে সর্বোচ্চ ১০টি ছবি পাঠানো যাবে'); return; }
+            for (const file of list) {
+                const err = validateChatImageFile(file);
+                if (err) { toast('❌ ' + err); return; }
+            }
             if (!dmCurrentThreadId || !window.currentUser) return;
             const displayName = getProfileDisplayName(window.currentUser.email, window.currentUser.displayName);
-            toast('📤 ছবি পাঠানো হচ্ছে...');
+            toast(list.length === 1 ? '📤 ছবি পাঠানো হচ্ছে...' : `📤 ${toBengaliNum(list.length)}টি ছবি পাঠানো হচ্ছে...`);
             try {
                 _chatImgLog('আপলোড শুরু (Apps Script-এ পাঠানো হচ্ছে)');
-                const imageUrl = await uploadImageToDrive(file, chatImageFileTag(displayName), '', '', null, '', 'chat');
-                _chatImgLog('Drive থেকে URL এলো:', imageUrl);
+                const imageUrls = [];
+                for (let i = 0; i < list.length; i++) {
+                    const u = await uploadImageToDrive(list[i], chatImageFileTag(displayName) + (list.length > 1 ? '_' + (i + 1) : ''), '', '', null, '', 'chat');
+                    if (u) imageUrls.push(u);
+                }
+                if (!imageUrls.length) throw new Error('কোনো ছবির URL পাওয়া যায়নি');
+                _chatImgLog('Drive থেকে URL এলো:', imageUrls);
                 const { collection, addDoc, doc, setDoc } = window._firestore;
                 await addDoc(collection(window._firestoreDb, 'dm_threads', dmCurrentThreadId, 'messages'), {
-                    sender: window.currentUser.email, senderName: displayName, text: '', imageUrl, timestamp: new Date()
+                    sender: window.currentUser.email, senderName: displayName, text: '', imageUrl: imageUrls[0], imageUrls, timestamp: new Date()
                         .toISOString(), ...dmxReplyPayload()
                 });
                 dmxClearReply();
@@ -12702,6 +13046,9 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                 <option value="password_change">পাসওয়ার্ড পরিবর্তন</option>
                 <option value="email_change">ইমেইল পরিবর্তন</option>
                 <option value="account_activation">অ্যাকাউন্ট সক্রিয়করণ</option>
+                <option value="wrong_entry">ভুল এন্ট্রি সংশোধন</option>
+                <option value="missing_entry">টাকা দিয়েছি, কিন্তু এন্ট্রি নেই</option>
+                <option value="info_change">তথ্য পরিবর্তন</option>
                 <option value="other">অন্যান্য</option>
               </select>
             </div>
@@ -13353,7 +13700,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             ${hideFilter ? '' : renderDateRangeFilter('dashboard')}
             <div class="grid cols-3" style="margin-bottom:22px;">
               <div class="card stat-card income"><div class="ico">৳</div><div class="label">মোট তহবিল সংগ্রহ ${fl}</div><div class="value">${fmtMoney(coll)}</div><div class="sub">মাসিক ${fmtMoney(mTot)} + বার্ষিক ${fmtMoney(yTot)}</div></div>
-              <div class="card stat-card expense"><div class="ico">−</div><div class="label">মোট ব্যয় ${fl}</div><div class="value">${fmtMoney(exp)}</div><div class="sub">${ef.length} টি খরচের এন্ট্রি</div></div>
+              <div class="card stat-card expense"><div class="ico">−</div><div class="label">মোট ব্যয় ${fl}</div><div class="value">${fmtMoney(exp)}</div><div class="sub">${toBengaliNum(ef.length)} টি খরচের এন্ট্রি</div></div>
               <div class="card stat-card"><div class="ico">✓</div><div class="label">বর্তমান তহবিল ${fl}</div><div class="value" style="color:${bal >= 0 ? 'var(--emerald-700)' : 'var(--maroon-600)'}">${fmtMoney(bal)}</div><div class="sub">নিবন্ধিত: ${totalMembers} জন · সক্রিয়: ${activeMembers} জন</div></div>
             </div>
             <div class="grid cols-2">
@@ -13544,7 +13891,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
               </div>
             </div>
             <div class="pill active" style="font-size:12.5px;padding:7px 14px;margin-bottom:14px;display:inline-block;">
-              মোট: ${totalM} জন · সক্রিয়: ${activeM} জন · দেখানো: ${filtered.length} জন
+              মোট: ${totalM} জন · সক্রিয়: ${activeM} জন · দেখানো: ${toBengaliNum(filtered.length)} জন
             </div>
             ${permActionBarHtml()}
             <div class="no-print" style="display:flex;justify-content:flex-end;margin-bottom:8px;">${columnSettingsButtonHtml('members')}</div>
@@ -13782,7 +14129,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                     <div class="em-name">${escapeHtml(s.name)}</div>
                     <div class="em-sub">${escapeHtml(s.address)}</div>
                     <div class="em-sub">${escapeHtml(s.contact)}</div>
-                    <div class="em-footer">✅ নির্বাচিত সদস্যবৃন্দ (${members.length} জন) &nbsp;•&nbsp; এক্সপোর্ট: ${time}</div>
+                    <div class="em-footer">✅ নির্বাচিত সদস্যবৃন্দ (${toBengaliNum(members.length)} জন) &nbsp;•&nbsp; এক্সপোর্ট: ${time}</div>
                   </div>
                 </div>
                 <div class="export-main">${selectedMembersTableHtml(members)}</div>
@@ -13792,7 +14139,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                 const dd = String(now.getDate()).padStart(2, '0');
                 const mm = String(now.getMonth() + 1).padStart(2, '0');
                 const yyyy = now.getFullYear();
-                link.download = sanitizeFileName(`নির্বাচিত-সদস্যবৃন্দ-${members.length}জন-${dd}-${mm}-${yyyy}`) + '.jpg';
+                link.download = sanitizeFileName(`নির্বাচিত-সদস্যবৃন্দ-${toBengaliNum(members.length)}জন-${dd}-${mm}-${yyyy}`) + '.jpg';
                 link.href = canvas.toDataURL('image/jpeg', 0.95);
                 link.click();
                 toast('নির্বাচিত সদস্যদের জেপিজি ডাউনলোড হয়েছে');
@@ -13822,7 +14169,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                   <div class="em-sub">${escapeHtml(s.contact)}</div>
                 </div>
               </div>
-              <h2 style="font-family:var(--font-display);margin:0 0 12px;">নির্বাচিত সদস্যবৃন্দ (${members.length} জন)</h2>
+              <h2 style="font-family:var(--font-display);margin:0 0 12px;">নির্বাচিত সদস্যবৃন্দ (${toBengaliNum(members.length)} জন)</h2>
               ${selectedMembersTableHtml(members)}
             `;
             document.body.appendChild(area);
@@ -13914,12 +14261,12 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
               ${exportDue > 0 ? `<div style="margin-bottom:18px;font-size:12.5px;color:var(--maroon-600);font-weight:700;">🔴 বকেয়া: ${fmtMoney(exportDue)} <span class="muted" style="font-weight:400;">(সর্বমোট অনুদানে যোগ করা হয়নি)</span></div>` : ''}` : (_exStTotal === 'lock' ? `<div style="margin-bottom:18px;font-size:12.5px;">🔒 মোট অনুদানের হিসাব সংরক্ষিত — দেখার অনুমতি নেই।</div>` : '')}
 
               <div style="margin-bottom:18px;">
-                <strong style="font-size:13.5px;color:var(--emerald-900);">📅 মাসিক অনুদান (${monthly.length} টি)</strong>
-                ${monthly.length ? `<div style="border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-top:7px;"><table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr><th style="${thMonth}">মাস</th><th style="${thN}">পরিমাণ</th><th style="${th}">মেথড</th><th style="${th}">সংগ্রাহক</th></tr></thead><tbody>${monthly.map((r,i)=>`<tr style="${rowBg(i)}"><td style="${tdMonth}">${escapeHtml(r.month)}</td><td style="${tdAmount}">${fmtMoney(r.amount)}</td><td style="${tdMethod}">${methodBadge(r.method)}</td><td style="${tdCollector}">${escapeHtml(r.collector||'—')}</td></tr>`).join('')}</tbody><tfoot><tr style="background:var(--gold-100);"><td style="${tdBase}font-weight:800;color:var(--emerald-900);" colspan="1">মোট</td><td style="${tdBase}text-align:right;font-weight:800;color:var(--emerald-900);font-size:13.5px;">${fmtMoney(monthlyTotal)}</td><td style="${tdBase}" colspan="2"></td></tr></tfoot></table></div>` : '<div class="small muted" style="margin-top:6px;">কোনো মাসিক অনুদান নেই।</div>'}
+                <strong style="font-size:13.5px;color:var(--emerald-900);">📅 মাসিক অনুদান (${toBengaliNum(monthly.length)} টি)</strong>
+                ${monthly.length ? `<div style="border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-top:7px;"><table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr><th style="${thMonth}">মাস</th><th style="${thN}">পরিমাণ</th><th style="${th}">মেথড</th><th style="${th}">সংগ্রাহক</th></tr></thead><tbody>${monthly.map((r,i)=>`<tr style="${rowBg(i)}"><td style="${tdMonth}">${escapeHtml(txnMonthLabel(r.month))}</td><td style="${tdAmount}">${fmtMoney(r.amount)}</td><td style="${tdMethod}">${methodBadge(r.method)}</td><td style="${tdCollector}">${escapeHtml(r.collector||'—')}</td></tr>`).join('')}</tbody><tfoot><tr style="background:var(--gold-100);"><td style="${tdBase}font-weight:800;color:var(--emerald-900);" colspan="1">মোট</td><td style="${tdBase}text-align:right;font-weight:800;color:var(--emerald-900);font-size:13.5px;">${fmtMoney(monthlyTotal)}</td><td style="${tdBase}" colspan="2"></td></tr></tfoot></table></div>` : '<div class="small muted" style="margin-top:6px;">কোনো মাসিক অনুদান নেই।</div>'}
               </div>
 
               <div>
-                <strong style="font-size:13.5px;color:var(--emerald-900);">🗓️ বার্ষিক অনুদান (${yearly.length} টি)</strong>
+                <strong style="font-size:13.5px;color:var(--emerald-900);">🗓️ বার্ষিক অনুদান (${toBengaliNum(yearly.length)} টি)</strong>
                 ${yearly.length ? `<div style="border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-top:7px;"><table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr><th style="${thDate}">তারিখ</th><th style="${thN}">পরিমাণ</th><th style="${th}">মেথড</th><th style="${th}">সংগ্রাহক</th><th style="${th}">মন্তব্য</th></tr></thead><tbody>${yearly.map((r,i)=>`<tr style="${rowBg(i)}"><td style="${tdDate}">${fmtDate(r.date)}</td><td style="${tdAmount}">${fmtMoney(r.amount)}</td><td style="${tdMethod}">${methodBadge(r.method)}</td><td style="${tdCollector}">${escapeHtml(r.collector||'—')}</td><td style="${tdBase}color:var(--ink);">${escapeHtml(r.remarks||'—')}</td></tr>`).join('')}</tbody><tfoot><tr style="background:var(--gold-100);"><td style="${tdBase}font-weight:800;color:var(--emerald-900);">মোট</td><td style="${tdBase}text-align:right;font-weight:800;color:var(--emerald-900);font-size:13.5px;">${fmtMoney(yearlyTotal)}</td><td style="${tdBase}" colspan="3"></td></tr></tfoot></table></div>` : '<div class="small muted" style="margin-top:6px;">কোনো বার্ষিক অনুদান নেই।</div>'}
               </div>
             `;
@@ -14143,7 +14490,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             `, (modalEl) => {
                 const grid = modalEl.querySelector('#tab-menu-grid');
                 const noticeCount = getUnreadCount('notices');
-                const reqCount = window.currentUser && isAdminUser() ? getUnreadCount('users') : 0;
+                const reqCount = getUnreadCount('users');
                 const chatCount = getUnreadCount('chat');
                 const logCount = getUnreadCount('notifications');
                 grid.innerHTML = CONFIG.TAB_ORDER.filter(isTabVisibleForCurrentUser).filter(k => k !== 'notifications').map(key => {
@@ -14152,9 +14499,9 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                         `<span class="notice-count-badge">${noticeCount}</span>`;
                     if (key === 'notifications' && logCount > 0) badge =
                         `<span class="notice-count-badge" style="background:var(--maroon-600);color:#fff;">${logCount}</span>`;
-                    if (key === 'users' && reqCount > 0 && window.currentUser && isAdminUser()) badge =
+                    if (key === 'users' && reqCount > 0) badge =
                         `<span class="notice-count-badge" style="background:var(--maroon-600);color:#fff;">${reqCount}</span>`;
-                    if (key === 'chat' && chatCount > 0) badge =
+                    if (!badge) badge = (window.mfNewBadge ? window.mfNewBadge(key, 'notice-count-badge') : ''); if (key === 'chat' && chatCount > 0) badge =
                         `<span class="notice-count-badge" style="background:var(--emerald-500);color:#fff;">${chatCount}</span>`;
                     return `<button type="button" class="tab-menu-item ${key === currentTab ? 'active' : ''}" data-tab="${key}">
                               <span class="tab-menu-icon">${CONFIG.TAB_ICONS[key]}</span>
@@ -14182,7 +14529,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             { key: 'actions', label: 'কার্যক্রম' }
         ];
         const _mdCellsMonthly = {
-            month: { label: 'মাস', td: (r) => `<td>${escapeHtml(r.month)}</td>` },
+            month: { label: 'মাস', td: (r) => `<td>${escapeHtml(txnMonthLabel(r.month))}</td>` },
             amount: { label: 'পরিমাণ', thClass: 'num', td: (r) => `<td class="num">${fmtMoney(r.amount)}</td>` },
             method: { label: 'মেথড', td: (r) => `<td class="muted">${escapeHtml(r.method)}${window.mfSentTag ? window.mfSentTag(r.id) : ''}</td>` },
             collector: { label: 'সংগ্রাহক', td: (r) => `<td class="muted">${escapeHtml(r.collector)}</td>` },
@@ -14255,11 +14602,11 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
               ${detailsDue > 0 ? `<div style="margin-top:6px;font-size:13px;">🔴 বকেয়া: <strong>${fmtMoney(detailsDue)}</strong> <span class="muted">(সর্বমোট অনুদানে যোগ করা হয়নি)</span></div>` : ''}
             </div>`}
             <div style="margin-bottom:12px;">
-              <strong>মাসিক অনুদান (${monthly.length} টি)</strong>
+              <strong>মাসিক অনুদান (${toBengaliNum(monthly.length)} টি)</strong>
               ${monthly.length ? `<div class="table-wrap" style="border:none;max-height:180px;overflow-y:auto;">${memberDetailsSubTableHtml(_mdCellsMonthly, monthly.sort((a,b)=>monthKeySortValue(a.month)-monthKeySortValue(b.month)))}</div>` : '<div class="small muted">কোনো মাসিক অনুদান নেই।</div>'}
             </div>
             <div style="margin-bottom:12px;">
-              <strong>বার্ষিক অনুদান (${yearly.length} টি)</strong>
+              <strong>বার্ষিক অনুদান (${toBengaliNum(yearly.length)} টি)</strong>
               ${yearly.length ? `<div class="table-wrap" style="border:none;max-height:180px;overflow-y:auto;">${memberDetailsSubTableHtml(_mdCellsYearly, yearly.sort((a,b)=>new Date(b.date)-new Date(a.date)))}</div>` : '<div class="small muted">কোনো বার্ষিক অনুদান নেই।</div>'}
             </div>
             <div class="modal-actions"><button class="btn btn-outline" id="details-close">বন্ধ করুন</button><button class="btn btn-outline" id="details-jpg">🖼️ JPG</button><button class="btn btn-outline" id="details-print">🖨️ প্রিন্ট</button></div>
@@ -14479,7 +14826,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                 `<tr><td colspan="${_monthlyVisibleKeys.length || 1}"><div class="empty-state"><div class="em">${filtered ? '📭' : '👤'}</div>${filtered ? 'এই রেঞ্জে কোনো মাসিক অনুদান পাওয়া যায়নি।' : 'কোনো সদস্য পাওয়া যায়নি।'}</div></td></tr>`;
 
             const overrideNotice = filtered ?
-                `<div class="filter-override-notice">🔍 <strong>ফিল্টার সক্রিয়:</strong> মাস নির্বাচন অগ্রাহ্য — ${fmtDate(range.start)} থেকে ${fmtDate(range.end)} পর্যন্ত <strong>সকল মাসের</strong> অনুদান দেখানো হচ্ছে। <span class="badge">${data.length} টি এন্ট্রি</span></div>` :
+                `<div class="filter-override-notice">🔍 <strong>ফিল্টার সক্রিয়:</strong> মাস নির্বাচন অগ্রাহ্য — ${fmtDate(range.start)} থেকে ${fmtDate(range.end)} পর্যন্ত <strong>সকল মাসের</strong> অনুদান দেখানো হচ্ছে। <span class="badge">${toBengaliNum(data.length)} টি এন্ট্রি</span></div>` :
                 '';
 
             return `
@@ -15053,7 +15400,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                   ${state.categories.map(c => `<option value="${c.id}" ${c.id === expenseFilterCat ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('')}
                 </select>
                 ${amountSortBtnHtml('expenses', 'পরিমাণ')}
-                <span class="small muted">দেখানো: ${rows.length} টি</span>
+                <span class="small muted">দেখানো: ${toBengaliNum(rows.length)} টি</span>
               </div>
               ${userAddBtnHtml('expense')}
             </div>
@@ -15188,7 +15535,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
               ${searchBoxHtml('notice-search', 'শিরোনাম বা বিবরণে খুঁজুন...', noticeSearch, filtered.length)}
               ${userAddBtnHtml('notice')}
             </div>
-            <div class="notice-toolbar-summary"><span class="count-pill">📬 মোট ${all.length} টি নোটিশ</span>${filtered.length !== all.length ? `<span class="muted small">(দেখানো ${filtered.length} টি)</span>` : ''}</div>
+            <div class="notice-toolbar-summary"><span class="count-pill">📬 মোট ${toBengaliNum(all.length)} টি নোটিশ</span>${filtered.length !== all.length ? `<span class="muted small">(দেখানো ${toBengaliNum(filtered.length)} টি)</span>` : ''}</div>
             <div class="notice-list">
               ${filtered.length ? filtered.map((n, idx) => {
                 const isOpen = openNoticeId === n.id;
@@ -15296,7 +15643,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
               ${searchBoxHtml('announcement-search', 'শিরোনাম বা বিবরণে খুঁজুন...', announcementSearch, filtered.length)}
               ${userAddBtnHtml('announcement')}
             </div>
-            <div class="notice-toolbar-summary"><span class="count-pill">📣 মোট ${all.length} টি ঘোষণা</span>${filtered.length !== all.length ? `<span class="muted small">(দেখানো ${filtered.length} টি)</span>` : ''}</div>
+            <div class="notice-toolbar-summary"><span class="count-pill">📣 মোট ${toBengaliNum(all.length)} টি ঘোষণা</span>${filtered.length !== all.length ? `<span class="muted small">(দেখানো ${toBengaliNum(filtered.length)} টি)</span>` : ''}</div>
             <div class="notice-list announcement-list">
               ${filtered.length ? filtered.map((n, idx) => {
                 const isOpen = openAnnouncementId === n.id;
@@ -15435,7 +15782,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                 </select>
               </div>
             </div>
-            <div class="notice-toolbar-summary"><span class="count-pill">📋 মোট ${total} টি লগ</span><button class="btn btn-outline btn-sm no-print" id="btn-unsent-list" title="গত ৪৫ দিনে চাঁদা নেওয়া হয়েছে কিন্তু বার্তা/রিসিপ্ট পাঠানো হয়নি এমন তালিকা">📤 পাঠানো বাকি</button>${logs.length !== total ? `<span class="muted small">(দেখানো ${logs.length} টি)</span>` : ''}${total > 0 ? `<button class="btn btn-outline btn-sm no-print" id="btn-clear-logs" style="margin-left:auto;">🗑 সকল লগ মুছুন</button>` : ''}</div>
+            <div class="notice-toolbar-summary"><span class="count-pill">📋 মোট ${total} টি লগ</span><button class="btn btn-outline btn-sm no-print" id="btn-unsent-list" title="গত ৪৫ দিনে চাঁদা নেওয়া হয়েছে কিন্তু বার্তা/রিসিপ্ট পাঠানো হয়নি এমন তালিকা">📤 পাঠানো বাকি</button>${logs.length !== total ? `<span class="muted small">(দেখানো ${toBengaliNum(logs.length)} টি)</span>` : ''}${total > 0 ? `<button class="btn btn-outline btn-sm no-print" id="btn-clear-logs" style="margin-left:auto;">🗑 সকল লগ মুছুন</button>` : ''}</div>
             <div class="log-list">
               ${logs.length ? logs.map(l => {
                 const _C = window.mfLog.card(l);
@@ -15639,13 +15986,14 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                     <button class="btn btn-primary btn-sm" id="self-request-btn">📨 রিকোয়েস্ট</button>
                     <button class="btn btn-outline btn-sm" id="self-comment-btn">💬 কমেন্ট</button>
                     <!-- 🆕 [ধাপ ০৭] আলাদা "মাসিক সংগ্রহ" বাটন এখান থেকে সরানো হলো — এখন মোবাইলে নিচের নেভের "সংগ্রহ", ডেস্কটপে টেবিলের উপরের অ্যাকশন-বারে (ডুপ্লিকেট এড়াতে) -->
+                    <button class="btn btn-outline btn-sm" data-ibx-open="1">🔔 ইনবক্স</button>
                     <button class="btn btn-danger btn-sm" id="self-logout-btn">🚪 লগ আউট</button>
                   </div>
                 </div>
               </div>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-                <div class="card"><h4 style="font-family:var(--font-display);color:var(--emerald-900);margin:0 0 10px;">📨 রিকোয়েস্ট (${myReqs.length})</h4>${myReqs.length ? myReqs.slice(0,10).map(r => `<div class="req-item" style="margin-bottom:6px;"><div class="req-info"><div class="req-user">${escapeHtml(r.type)}</div><div class="req-detail">${escapeHtml(r.data || '')}</div><div class="req-time">${fmtDate(r.createdAt)} • <span class="req-badge ${r.status}">${r.status === 'pending' ? 'অপেক্ষমান' : r.status === 'approved' ? 'অনুমোদিত' : 'বাতিল'}</span></div></div></div>`).join('') : '<div class="small muted">কোনো রিকোয়েস্ট নেই।</div>'}${myReqs.length > 10 ? `<div class="small muted">আরও ${myReqs.length - 10} টি...</div>` : ''}</div>
-                <div class="card"><h4 style="font-family:var(--font-display);color:var(--emerald-900);margin:0 0 10px;">💬 কমেন্ট (${myCmts.length})</h4>${myCmts.length ? myCmts.slice(0,10).map(c => `<div class="comment-item user-cmt" style="margin-bottom:6px;"><div class="cmt-header"><span class="cmt-user">${escapeHtml(c.displayName || c.email)}</span><span class="cmt-time">${fmtDate(c.createdAt)}</span></div><div class="cmt-text">${escapeHtml(c.text)}</div>${c.reply ? `<div class="cmt-reply"><span class="reply-from">অ্যাডমিন:</span> ${escapeHtml(c.reply)}</div>` : ''}</div>`).join('') : '<div class="small muted">কোনো কমেন্ট নেই।</div>'}${myCmts.length > 10 ? `<div class="small muted">আরও ${myCmts.length - 10} টি...</div>` : ''}</div>
+                <div class="card"><h4 style="font-family:var(--font-display);color:var(--emerald-900);margin:0 0 10px;">📨 রিকোয়েস্ট (${myReqs.length})</h4>${myReqs.length ? myReqs.slice(0,10).map(r => `<div class="req-item" style="margin-bottom:6px;"><div class="req-info"><div class="req-user">${window.mfReqType(r.type)}</div><div class="req-detail">${escapeHtml(r.data || '')}</div><div class="req-time">${fmtDate(r.createdAt)} • ${window.mfStatusChip(r)}</div><div style="margin-top:4px;"><button class="btn btn-outline btn-sm" data-conv="requests:${r.id}">💬 কথোপকথন${window.mfConvDot('requests', r)}</button></div></div></div>`).join('') : '<div class="small muted">কোনো রিকোয়েস্ট নেই।</div>'}${myReqs.length > 10 ? `<div class="small muted">আরও ${myReqs.length - 10} টি...</div>` : ''}</div>
+                <div class="card"><h4 style="font-family:var(--font-display);color:var(--emerald-900);margin:0 0 10px;">💬 কমেন্ট (${myCmts.length})</h4>${myCmts.length ? myCmts.slice(0,10).map(c => `<div class="comment-item user-cmt" style="margin-bottom:6px;"><div class="cmt-header"><span class="cmt-user">${escapeHtml(c.displayName || c.email)}</span><span class="cmt-time">${fmtDate(c.createdAt)}</span></div><div class="cmt-text">${escapeHtml(c.text)}</div>${c.reply ? `<div class="cmt-reply"><span class="reply-from">অ্যাডমিন:</span> ${escapeHtml(c.reply)}</div>` : ''}<div style="margin-top:4px;"><button class="btn btn-outline btn-sm" data-conv="comments:${c.id}">💬 কথোপকথন${window.mfConvDot('comments', c)}</button></div></div>`).join('') : '<div class="small muted">কোনো কমেন্ট নেই।</div>'}${myCmts.length > 10 ? `<div class="small muted">আরও ${myCmts.length - 10} টি...</div>` : ''}</div>
               </div>
             `;
             }
@@ -15660,7 +16008,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             if (userViewSearch.trim()) { const q = userViewSearch.trim().normalize('NFC').replace(/[\u200c\u200d]/g, '').toLowerCase();
                 filteredUsers = filteredUsers.filter(u => (u.email || '').normalize('NFC').replace(/[\u200c\u200d]/g, '').toLowerCase().includes(q) || (u.displayName || '')
                     .normalize('NFC').replace(/[\u200c\u200d]/g, '').toLowerCase().includes(q)); }
-            const pendingReqs = userRequestsCache.filter(r => r.status === 'pending');
+            const pendingReqs = userRequestsCache.filter(r => window.mfIsOpenReq(r));
             const allCmts = userCommentsCache;
 
             let content = '';
@@ -15675,7 +16023,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                     <option value="pending" ${userViewFilter === 'pending' ? 'selected' : ''}>পেন্ডিং</option>
                     <option value="blocked" ${userViewFilter === 'blocked' ? 'selected' : ''}>ব্লক</option>
                   </select>
-                  <span class="small muted">${filteredUsers.length} টি ইউজার</span>
+                  <span class="small muted">${toBengaliNum(filteredUsers.length)} টি ইউজার</span>
                   <button class="btn btn-outline btn-sm no-print" id="btn-mf-sync" title="সদস্য ↔ ইউজারের কমন তথ্য মেলান (আইডি, নাম, মোবাইল, পিতা, দায়িত্ব, ছবি)">🔗 সব সিঙ্ক করুন</button>
                 </div>
               </div>
@@ -15688,16 +16036,16 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             `;
             } else if (userViewTab === 'requests') {
                 content = `
-              <div style="margin-bottom:12px;"><span class="pill active" style="background:${pendingReqs.length ? 'var(--maroon-100)' : 'var(--gold-100)'};color:${pendingReqs.length ? 'var(--maroon-600)' : 'var(--emerald-700)'};">📨 পেন্ডিং: ${pendingReqs.length} টি</span><span class="small muted" style="margin-left:12px;">মোট: ${userRequestsCache.length} টি</span></div>
-              <div style="margin-bottom:16px;"><strong>⏳ অপেক্ষমান</strong>${pendingReqs.length ? pendingReqs.map(r => `<div class="req-item"><div class="req-info"><div class="req-user">${escapeHtml(r.email)} — <strong>${escapeHtml(r.type)}</strong></div><div class="req-detail">${escapeHtml(r.data || '')}</div><div class="req-time">📅 ${fmtDate(r.createdAt)}</div></div><div class="req-actions"><button class="btn btn-success btn-sm" data-req-approve="${r.id}">✅ অনুমোদন</button><button class="btn btn-danger btn-sm" data-req-deny="${r.id}">❌ বাতিল</button></div></div>`).join('') : '<div class="small muted">কোনো পেন্ডিং রিকোয়েস্ট নেই।</div>'}
+              <div style="margin-bottom:12px;"><span class="pill active" style="background:${pendingReqs.length ? 'var(--maroon-100)' : 'var(--gold-100)'};color:${pendingReqs.length ? 'var(--maroon-600)' : 'var(--emerald-700)'};">📨 পেন্ডিং: ${toBengaliNum(pendingReqs.length)} টি</span><span class="small muted" style="margin-left:12px;">মোট: ${toBengaliNum(userRequestsCache.length)} টি</span></div>
+              <div style="margin-bottom:16px;"><strong>⏳ অপেক্ষমান</strong>${pendingReqs.length ? pendingReqs.map(r => `<div class="req-item"><div class="req-info"><div class="req-user">${escapeHtml(r.email)} — <strong>${window.mfReqType(r.type)}</strong> ${window.mfStatusChip(r)}${window.mfConvAge(r)}${window.mfConvDot('requests', r)}</div><div class="req-detail">${escapeHtml(r.data || '')}</div><div class="req-time">📅 ${fmtDate(r.createdAt)}</div></div><div class="req-actions"><button class="btn btn-success btn-sm" data-req-approve="${r.id}">✅ অনুমোদন</button><button class="btn btn-danger btn-sm" data-req-deny="${r.id}">❌ বাতিল</button></div></div>`).join('') : '<div class="small muted">কোনো পেন্ডিং রিকোয়েস্ট নেই।</div>'}
               </div>
-              <div><strong>📜 ইতিহাস</strong>${userRequestsCache.filter(r => r.status !== 'pending').slice(0,30).length ? userRequestsCache.filter(r => r.status !== 'pending').slice(0,30).map(r => `<div class="req-item" style="opacity:0.8;"><div class="req-info"><div class="req-user">${escapeHtml(r.email)} — ${escapeHtml(r.type)} <span class="req-badge ${r.status}">${r.status === 'approved' ? 'অনুমোদিত' : 'বাতিল'}</span></div><div class="req-detail">${escapeHtml(r.data || '')}</div><div class="req-time">${fmtDate(r.createdAt)}</div></div></div>`).join('') : '<div class="small muted">কোনো ইতিহাস নেই।</div>'}
+              <div><strong>📜 ইতিহাস</strong>${userRequestsCache.filter(r => !window.mfIsOpenReq(r)).slice(0,30).length ? userRequestsCache.filter(r => !window.mfIsOpenReq(r)).slice(0,30).map(r => `<div class="req-item" style="opacity:0.8;"><div class="req-info"><div class="req-user">${escapeHtml(r.email)} — ${window.mfReqType(r.type)} ${window.mfStatusChip(r)}</div><div class="req-detail">${escapeHtml(r.data || '')}</div><div class="req-time">${fmtDate(r.createdAt)}</div></div></div>`).join('') : '<div class="small muted">কোনো ইতিহাস নেই।</div>'}
               </div>
             `;
             } else if (userViewTab === 'comments') {
                 const sorted = [...allCmts].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
                 content = `
-              <div class="small muted" style="margin-bottom:12px;">মোট ${sorted.length} টি কমেন্ট</div>
+              <div class="small muted" style="margin-bottom:12px;">মোট ${toBengaliNum(sorted.length)} টি কমেন্ট</div>
               ${sorted.length ? sorted.map(c => `<div class="comment-item ${c.isAdminReply ? 'admin-cmt' : 'user-cmt'}"><div class="cmt-header"><span class="cmt-user">${escapeHtml(c.displayName || c.email)} ${c.isAdminReply ? '👑' : ''}</span><span class="cmt-time">${fmtDate(c.createdAt)}</span></div><div class="cmt-text">${escapeHtml(c.text)}</div>${c.reply ? `<div class="cmt-reply"><span class="reply-from">অ্যাডমিন:</span> ${escapeHtml(c.reply)}</div>` : `<div style="margin-top:10px;"><input type="text" id="reply-input-${c.id}" placeholder="উত্তর দিন..." style="width:70%;display:inline-block;padding:6px 10px;font-size:12px;"><button class="btn btn-primary btn-sm" data-reply-comment="${c.id}">উত্তর দিন</button></div>`}</div>`).join('') : `<div class="empty-state"><div class="em">💬</div>কোনো কমেন্ট নেই।</div>`}
             `;
             }
@@ -15709,11 +16057,12 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
               <div class="card stat-card"><div class="ico">👥</div><div class="label">মোট ইউজার</div><div class="value">${totalUsers}</div><div class="sub">সক্রিয়: ${active} · পেন্ডিং: ${pending} · ব্লক: ${blocked}</div></div>
               <div class="card stat-card" style="border-color:var(--emerald-500);"><div class="ico">🟢</div><div class="label">বর্তমানে একটিভ</div><div class="value" style="color:var(--emerald-700);">${activeNow}</div><div class="sub">এই মুহূর্তে অনলাইনে আছেন</div></div>
               <div class="card stat-card" style="border-color:${pendingReqs.length ? 'var(--gold-500)' : 'var(--line)'};"><div class="ico">📨</div><div class="label">পেন্ডিং রিকোয়েস্ট</div><div class="value" style="color:${pendingReqs.length ? 'var(--maroon-600)' : 'var(--emerald-700)'};">${pendingReqs.length}</div><div class="sub">${pendingReqs.length ? 'অনুমোদনের অপেক্ষায়' : 'কোনো পেন্ডিং নেই'}</div></div>
-              <div class="card stat-card"><div class="ico">💬</div><div class="label">মোট কমেন্ট</div><div class="value">${allCmts.length}</div><div class="sub">${allCmts.filter(c => c.reply).length} টি উত্তর দেওয়া হয়েছে</div></div>
+              <div class="card stat-card"><div class="ico">💬</div><div class="label">মোট কমেন্ট</div><div class="value">${allCmts.length}</div><div class="sub">${toBengaliNum(allCmts.filter(c => c.reply).length)} টি উত্তর দেওয়া হয়েছে</div></div>
             </div>
             <div class="toolbar no-print" style="margin-bottom:8px;">
               <div style="display:flex;gap:6px;flex-wrap:wrap;">
                 <button class="btn ${userViewTab === 'users' ? 'btn-primary' : 'btn-outline'} btn-sm" data-utab="users">👥 ইউজার</button>
+                <button class="btn btn-outline btn-sm" data-ibx-open="1">🔔 ইনবক্স</button>
                 <button class="btn ${userViewTab === 'requests' ? 'btn-primary' : 'btn-outline'} btn-sm" data-utab="requests">📨 রিকোয়েস্ট ${pendingReqs.length ? `(${pendingReqs.length})` : ''}</button>
                 <button class="btn ${userViewTab === 'comments' ? 'btn-primary' : 'btn-outline'} btn-sm" data-utab="comments">💬 কমেন্ট</button>
               </div>
@@ -15799,12 +16148,12 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                 });
             }));
             document.querySelectorAll('[data-req-approve]').forEach(b => b.addEventListener('click', async () => {
-                await updateRequestStatus(b.dataset.reqApprove, 'approved');
+                await window.mfSetStatus('requests', b.dataset.reqApprove, 'approved');
                 toast('✅ রিকোয়েস্ট অনুমোদিত');
                 loadUsersFromFirestore();
             }));
             document.querySelectorAll('[data-req-deny]').forEach(b => b.addEventListener('click', async () => {
-                await updateRequestStatus(b.dataset.reqDeny, 'denied');
+                { const _why = window.prompt('বাতিলের কারণ লিখুন (ইউজার দেখতে পাবে):', ''); if (_why === null) return; await window.mfSetStatus('requests', b.dataset.reqDeny, 'denied', _why.trim()); }
                 toast('❌ রিকোয়েস্ট বাতিল');
                 loadUsersFromFirestore();
             }));
@@ -15813,7 +16162,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
                 const input = document.getElementById(`reply-input-${id}`);
                 const reply = input?.value?.trim();
                 if (!reply) { toast('উত্তর লিখুন'); return; }
-                await replyComment(id, reply);
+                await window.mfThreadAdd('comments', id, reply);
                 toast('✅ উত্তর দেওয়া হয়েছে');
                 loadUsersFromFirestore();
             }));
@@ -16467,7 +16816,7 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
 
             refreshReadStateForActiveTab(); // 🆕 সক্রিয় ট্যাবে থাকলে সেটা "দেখা হয়েছে" হিসেবে চিহ্নিত হবে
             const noticeCount = getUnreadCount('notices');
-            const reqCount = window.currentUser && isAdminUser() ? getUnreadCount('users') : 0;
+            const reqCount = getUnreadCount('users');
             const chatCount = getUnreadCount('chat');
             const logCount = getUnreadCount('notifications');
 
@@ -16683,6 +17032,13 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
         // ======================================================================
         let _shellTextsSig = '';
         let _shellRetry = null;
+        window.mfNavLabels = () => {
+            try {
+                const set = (id, t) => { const el = document.querySelector('#' + id + ' .bottom-nav-label'); if (el && t && el.textContent !== t) el.textContent = t; };
+                set('bnav-donations', getTabLabel('donations'));
+                set('bnav-chat', getTabLabel('chat'));
+            } catch (e) { }
+        };
         window.refreshShellTexts = () => {
             try {
                 const s = state.settings || {};
@@ -16690,6 +17046,7 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
                 if (s.name) { if (!window.__mfTitleSuffix) window.__mfTitleSuffix = document.title.split(' — ').slice(1).join(' — '); document.title = s.name + (window.__mfTitleSuffix ? ' — ' + window.__mfTitleSuffix : ''); }
                 const sig = JSON.stringify([s.name, s.address, s.contact, s.period, s.footerText, s.versionText,
                     getHomeLabel(), CONFIG.TAB_ORDER.map(k => getTabLabel(k)), CONFIG.TAB_ORDER.map(k => getTabSub(k))]);
+                window.mfNavLabels();
                 if (sig === _shellTextsSig) return;
                 const first = _shellTextsSig === '';
                 _shellTextsSig = sig;
@@ -16703,7 +17060,7 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
                 const sb = document.getElementById('mobile-sidebar');
                 if (sb && sb.classList.contains('open')) {
                     clearTimeout(_shellRetry);
-                    _shellRetry = setTimeout(() => { _shellTextsSig = ''; window.refreshShellTexts(); _shellTextsSig = _shellTextsSig || sig; }, 2500);
+                    _shellRetry = setTimeout(() => { _shellTextsSig = '\u0000retry'; window.refreshShellTexts(); }, 2500);   // 🔧 [v16.5.119] আগে ''-এ রিসেট হওয়ায় পুনরায়-চেষ্টা "প্রথমবার" ধরে কিছুই আঁকত না
                 } else if (typeof renderSidebar === 'function') {
                     renderSidebar();
                 }
@@ -16792,6 +17149,7 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
           `;
 
             renderTabs();
+            try { window.mfNavLabels(); } catch (e) { }
             updateClock();
             setInterval(updateClock, 1000);
 
@@ -16825,7 +17183,7 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
             const activeUsersBtnEl = document.getElementById('btn-active-users');
             if (activeUsersBtnEl) activeUsersBtnEl.addEventListener('click', openActiveUsersPanel);
             // 🆕 নোটিফিকেশন আইকন — সরাসরি নোটিফিকেশন ট্যাবে যাওয়া (শুধু "সাধারণ ভিউ" অনুমতিপ্রাপ্ত ইউজারের জন্য দেখা যায়; প্রিভিউ-এডিট মোডে অ্যাডমিনের জন্যও দেখা যায়)
-            document.getElementById('btn-notify').addEventListener('click', () => goToTab('notifications'));
+            document.getElementById('btn-notify').addEventListener('click', () => { if (window.mfInboxUnread && window.mfInboxUnread() > 0) window.mfInboxOpen(); else goToTab('notifications'); });
             // 🆕 ডার্ক মোড টগল
             document.getElementById('btn-dark-mode').addEventListener('click', toggleDarkMode);
             // 🆕 ডেক্সটপ মোড টগল (শুধু মোবাইলে দৃশ্যমান)
@@ -17157,7 +17515,7 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
                       ${mine ? '' : `<div class="cd-nm">${escapeHtml(name)}</div>`}
                       ${m.forwarded ? `<div class="cd-fwd">↪ ফরওয়ার্ড করা মেসেজ</div>` : ''}
                       ${quote}
-                      ${m.imageUrl ? `<img class="cd-img" src="${escapeHtml(toDirectImageUrl(m.imageUrl))}" data-cd-img="${escapeHtml(m.imageUrl)}" alt="">` : ''}
+                      ${(() => { const urls = (Array.isArray(m.imageUrls) && m.imageUrls.length) ? m.imageUrls : (m.imageUrl ? [m.imageUrl] : []); return urls.length ? urls.map((u, i) => `<img class="cd-img" src="${escapeHtml(toDirectImageUrl(u))}" data-cd-img="${escapeHtml(u)}" data-cd-img-list="${escapeHtml(JSON.stringify(urls))}" data-cd-img-index="${i}" alt="সংযুক্ত ছবি ${i + 1}">${urls.length > 1 ? '<div class="cd-img-count">' + toBengaliNum(i + 1) + ' / ' + toBengaliNum(urls.length) + '</div>' : ''}`).join('') : ''; })()}
                       ${m.text ? `<div class="cd-tx">${escapeHtml(m.text)}</div>` : ''}
                       <div class="cd-tm">${pinned ? '📌 ' : ''}${escapeHtml(cdTime(m.timestamp))}</div>
                     </div>
@@ -17326,7 +17684,7 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
                 .filter(([em, p]) => em !== me && p.typing && p.lastActive && (now - new Date(p.lastActive).getTime()) < TYPING_WINDOW_MS)
                 .map(([em, p]) => p.displayName || cdName(em));
             if (!names.length) return '';
-            return names.length === 1 ? `✍️ ${escapeHtml(names[0])} লিখছেন…` : `✍️ ${names.length} জন লিখছেন…`;
+            return names.length === 1 ? `✍️ ${escapeHtml(names[0])} লিখছেন…` : `✍️ ${toBengaliNum(names.length)} জন লিখছেন…`;
         };
 
         const cdMarkReadSoon = () => {
@@ -17437,7 +17795,15 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
             const dl = t.closest('[data-cd-del]');
             if (dl) { const id = dl.dataset.cdDel; cdResetMenus(); confirmDelete('মেসেজ মুছে ফেলা হবে?', () => deleteChatMessage(id)); return; }
             const im = t.closest('[data-cd-img]');
-            if (im) { try { openImagePreview(toDirectImageUrl(im.dataset.cdImg), { el: im }); } catch (er) {} return; }
+            if (im) {
+                try {
+                    let list = [];
+                    try { list = JSON.parse(im.dataset.cdImgList || '[]'); } catch (e) { list = []; }
+                    const index = Math.max(0, parseInt(im.dataset.cdImgIndex || '0', 10) || 0);
+                    openImagePreview(toDirectImageUrl(im.dataset.cdImg), { el: im, list: list.map(u => toDirectImageUrl(u)), index });
+                } catch (er) {}
+                return;
+            }
             const bub = t.closest('[data-cd-pick]');
             if (bub) { const id = bub.dataset.cdPick; _cdPickFor = (_cdPickFor === id) ? null : id; _cdMoreFor = null; cdRefresh(); return; }
             if (t.closest('#cd-send')) { cdSend(); }
@@ -17554,7 +17920,7 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
             if (!el) return;
             refreshReadStateForActiveTab(); // 🆕 সক্রিয় ট্যাবে থাকলে সেটা "দেখা হয়েছে" হিসেবে চিহ্নিত হবে
             const noticeCount = getUnreadCount('notices');
-            const reqCount = window.currentUser && isAdminUser() ? getUnreadCount('users') : 0;
+            const reqCount = getUnreadCount('users');
             const chatCount = getUnreadCount('chat');
             const logCount = getUnreadCount('notifications');
             el.innerHTML = CONFIG.TAB_ORDER.filter(isTabVisibleForCurrentUser).map(key => {
@@ -17563,27 +17929,28 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
                     `<span class="notice-count-badge">${noticeCount}</span>`;
                 if (key === 'notifications' && logCount > 0) badge =
                     `<span class="notice-count-badge" style="background:var(--maroon-600);color:#fff;">${logCount}</span>`;
-                if (key === 'users' && reqCount > 0 && window.currentUser && isAdminUser()) badge =
+                if (key === 'users' && reqCount > 0) badge =
                     `<span class="notice-count-badge" style="background:var(--maroon-600);color:#fff;">${reqCount}</span>`;
-                if (key === 'chat' && chatCount > 0) badge =
+                if (!badge) badge = (window.mfNewBadge ? window.mfNewBadge(key, 'notice-count-badge') : ''); if (key === 'chat' && chatCount > 0) badge =
                     `<span class="notice-count-badge" style="background:var(--emerald-500);color:#fff;">${chatCount}</span>`;
                 return `<button class="tab-btn ${key === currentTab ? 'active' : ''}" data-tab="${key}"><span>${CONFIG.TAB_ICONS[key]}</span> ${escapeHtml(getTabLabel(key))} ${badge}</button>`;
             }).join('');
             const notifyBtn = document.getElementById('btn-notify');
             if (notifyBtn) {
                 let dot = notifyBtn.querySelector('.header-notify-dot');
-                if (logCount > 0) {
+                const _bc = logCount + (window.mfInboxUnread ? window.mfInboxUnread() : 0);
+                if (_bc > 0) {
                     if (!dot) {
                         dot = document.createElement('span');
                         dot.className = 'header-notify-dot';
                         dot.style.cssText = 'position:absolute;top:2px;right:2px;min-width:16px;height:16px;padding:0 3px;border-radius:999px;background:var(--maroon-600);color:#fff;font-size:9.5px;font-weight:700;display:flex;align-items:center;justify-content:center;line-height:1;';
                         notifyBtn.appendChild(dot);
                     }
-                    dot.textContent = logCount > 99 ? '99+' : logCount;
+                    dot.textContent = _bc > 99 ? '99+' : _bc;
                 } else if (dot) { dot.remove(); }
             }
             { const mfBadge = (id, n) => { const b = document.getElementById(id); if (!b) return; let d = b.querySelector('.mf-cnt'); if (n > 0) { if (!d) { d = document.createElement('span'); d.className = 'mf-cnt'; b.appendChild(d); } d.textContent = n > 99 ? '99+' : n; } else if (d) d.remove(); };
-              mfBadge('mobile-nav-toggle', 0); mfBadge('bnav-menu', noticeCount + reqCount); mfBadge('bnav-chat', chatCount); }
+              mfBadge('mobile-nav-toggle', 0); mfBadge('bnav-menu', noticeCount + reqCount + (window.mfNewTotal ? window.mfNewTotal() : 0)); mfBadge('bnav-chat', chatCount); }
             el.querySelectorAll('.tab-btn').forEach(b => b.addEventListener('click', () => {
                 currentTab = b.dataset.tab;
                 if (currentTab === 'monthly') {
@@ -17621,6 +17988,7 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
         // যেমন তালিকার নিচের দিকের কোনো আইটেম আপডেট করলে যেন পাতা আবার শুরুতে চলে না যায়
         window._scrollAnchorSelector = null;
         const renderMain = () => {
+            try { if (window.mfSentApply) window.mfSentApply(); } catch (e) { }
             if (_renderPending) return;
             _renderPending = true;
             requestAnimationFrame(() => {
@@ -17750,6 +18118,7 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
                     default:
                         main.innerHTML = `<div class="empty-state"><div class="em">📄</div>পাতা পাওয়া যায়নি।</div>`;
                 }
+                try { if (window.mfPgNow) window.mfPgNow(); } catch (e) { }   // 🆕 [v16.5.114] বড় তালিকায় প্রথম layout-এর আগেই বাড়তি সারি লুকানো
                 // 🆕 প্রিন্ট করলে বর্তমান ফিল্টার/সার্চ/সাজানোর তথ্য পাতায় দেখানোর জন্য ব্যানার আপডেট
                 const pfb = document.getElementById('print-filter-banner');
                 if (pfb) pfb.textContent = `🔍 ফিল্টার: ${getActiveFilterDescription()} — প্রিন্ট: ${new Date().toLocaleString('bn-BD', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`;
@@ -18419,7 +18788,13 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
                 }
 
                 log('সার্ভিস ওয়ার্কার রেজিস্টার করা হচ্ছে (/firebase-messaging-sw.js)...');
-                const registration = await navigator.serviceWorker.register('./firebase-messaging-sw.js');
+                let registration;
+                try {
+                    registration = await navigator.serviceWorker.register('./firebase-messaging-sw.js');
+                } catch (swError) {
+                    warn('Firebase Messaging সার্ভিস ওয়ার্কার পাওয়া যায়নি: ' + swError.message);
+                    return { ok: false, msg: 'পুশ সার্ভিস ওয়ার্কার পাওয়া যায়নি। firebase-messaging-sw.js ডেপ্লয়ে দিন।' };
+                }
                 // 🔧 [v16.5.68] নোটিফিকেশন-ক্লিকে 404 ঠিক করতে: এই পেজের আসল ঠিকানা SW-কে জানিয়ে রাখা (অ্যাপ বন্ধ থাকলে ক্লিকে ঠিক এই পেজই খুলবে)
                 try { const _c = await caches.open('mf-app'); await _c.put('pagePath', new Response(location.origin + location.pathname)); } catch (e) { }
                 log('✅ সার্ভিস ওয়ার্কার রেজিস্টার সফল।');
@@ -18745,7 +19120,7 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
         // ফিরে আসার আগেই ensureUserDocument চলে — তাই লোকাল ক্যাশে না পেলে সরাসরি ক্লাউড থেকে আনা হয়
         async function getAdminEmail() {
             try {
-                const raw = localStorage.getItem('mahfil_fund_app_v1');
+                const raw = localStorage.getItem('mahfil_fund_user_v1');
                 if (raw) {
                     const parsed = JSON.parse(raw);
                     if (parsed.settings?.adminEmail) return parsed.settings.adminEmail;
@@ -18776,7 +19151,7 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
             try { await window.mfAudit.logoutFlush(); } catch (e) { }
                 await signOut(auth);
             currentUser = null;
-            localStorage.removeItem('mahfil_fund_app_v1');
+            localStorage.removeItem('mahfil_fund_user_v1');
         }
 
         // 🆕 প্রেজেন্স হার্টবিট: ইউজার অনলাইন থাকা অবস্থায় নিয়মিত lastActive টাইমস্ট্যাম্প Firestore-এ পাঠানো হয়
@@ -19371,6 +19746,8 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
 
     /* ---------- "কার্যক্রম" কলাম: বাটনগুলো একটার নিচে একটা না হয়ে পাশাপাশি (flex-row, জায়গা না থাকলে wrap) ---------- */
     var tidyActionCells = function (tb) {
+        var _b0 = tb.tBodies && tb.tBodies[0], _n = _b0 ? _b0.rows.length : 0;   // 🔧 [v16.5.114] একই টেবিলে একই সারি-সংখ্যায় বারবার পুরো স্ক্যান নয়
+        if (tb.__mfTidyN === _n) return; tb.__mfTidyN = _n;
         var cells = tb.querySelectorAll('tbody td');
         for (var i = 0; i < cells.length; i++) {
             var td = cells[i];
@@ -19403,6 +19780,7 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
     var injectBars = function (tb) {
         if (!tb.tHead || tb.classList.contains('no-tbl-font')) return;
         if (tb.closest('#export-capture') || tb.closest('.tbl-tools')) return;
+        if (tb.__mfBarDone) return; tb.__mfBarDone = 1;   // 🔧 [v16.5.114] প্রতিটি DOM-পরিবর্তনে একই টেবিলে বারবার টুলবার-যাচাই নয়
         var host = tb.closest('.table-wrap') || tb;
         var prev = host.previousElementSibling;
         if (prev && prev.classList && prev.classList.contains('tbl-tools')) return;
@@ -19537,6 +19915,7 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
         var present = keys.filter(Boolean);
         var id = table.getAttribute('data-mf-tid') || (present.length ? tableIdFor(present) : null);   // 🆕 [v16.5.55]
         var frozen = id ? getKeys(id) : [];
+        if (!frozen.length && !table.__mfFrz) return;   // 🔧 [v16.5.114] ফ্রিজ নেই — layout-জোরকারী মাপজোখ বাদ
         var idxs = [];
         keys.forEach(function (k, ix) { if (k && frozen.indexOf(k) >= 0) idxs.push(ix); });
         var tb0 = table.tBodies[0];
@@ -19546,7 +19925,8 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
         if (table.__mfFp === fp && ok) return;
         clearTable(table);
         table.__mfFp = fp;
-        if (!idxs.length) return;
+        if (!idxs.length) { table.__mfFrz = false; return; }
+        table.__mfFrz = true;
         var host = table.closest('.table-wrap') || table.parentNode;
         var avail = host ? host.clientWidth : 0;
         var left = 0, use = [];
@@ -19946,7 +20326,7 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
 </script>
 <script id="mf-erp10-common">
 /* 🆕 [v16.5.10 ধাপ ১০] সবার জন্য সাধারণ অংশ (admin/user/personal) — অ্যাপের ভেতরের কোনো ফাংশন বদলায় না।
-   ১) "আমাদের সম্পর্কে" + সংশ্লিষ্ট লিংক: app_settings/site_config { about, links } থেকে লাইভ, ফুটারের ঠিক ওপরে।
+   ১) "আমাদের সম্পর্কে", অফিসিয়াল লিংক ও ইউজার-প্যানেলের কাস্টম বাটন: app_settings/site_config থেকে লাইভ।
       (সংগঠনের নাম/ঠিকানা/লোগো/থিম আগের মতোই settings ও site_config থেকে আসে — দ্বিতীয় কোনো উৎস নেই।)
    ২) অডিট-লগার: এডমিন app_settings/audit_config { enabled:true } চালু করলেই কেবল কাজ করে (ডিফল্ট বন্ধ)।
       প্রতি ইউজারের প্রতিদিনের জন্য ১টি ডক audit_logs/{email}__{YYYYMMDD}; ব্যাচ করে ~৯০ সেকেন্ডে ১ বার লেখে (ফ্রি কোটা বাঁচাতে)।
@@ -20016,13 +20396,26 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
 
     /* ====================================================================
        🆕 [v16.5.15 ধাপ ২] "আমাদের সম্পর্কে" v2 — সব প্যানেলে একই কোড (এই ব্লক তিন প্যানেলে হুবহু এক; শুধু panel ভেরিয়েবল আলাদা)।
-       ডেটার উৎস আগের মতোই app_settings/site_config: about(টেক্সট) ও links[] অপরিবর্তিত; নতুন সব ফিল্ড profile{} নামের আলাদা অংশে (পুরনো ডেটা ভাঙে না)।
+       ডেটার উৎস app_settings/site_config: about, links[], userButtons[] ও profile{}। userButtons শুধু অ্যাপে দেখায়, পাবলিক কপিতে নয়।
        পাবলিক ওয়েবসাইটের জন্য শুধু অনুমোদিত অংশের স্যানিটাইজড কপি public_site/profile-এ লেখা হয় (এডমিনের সেভের সময়)।
        ==================================================================== */
     /*PURE-START*/
     var T = function (s, n) { return String(s == null ? '' : s).slice(0, n); };
     var httpsUrl = function (u) { u = String(u || '').trim(); return (u.length <= 600 && /^https:\/\/[^\s"'<>]+$/i.test(u)) ? u : ''; };
     var httpUrl = function (u) { u = String(u || '').trim(); return (u.length <= 600 && /^https?:\/\/[^\s"'<>]+$/i.test(u)) ? u : ''; };
+    var buttonUrl = function (u) {
+        u = String(u || '').trim();
+        if (!u || u.length > 600 || /[\s"'<>\\]/.test(u)) return '';
+        if (/^https?:\/\/[^\s"'<>]+$/i.test(u)) return u;
+        if (u.indexOf(':') >= 0 || u.indexOf('//') === 0) return '';
+        return u;
+    };
+    var DEFAULT_USER_BUTTONS = [
+        { id: 'manual', label: 'ইউজার ম্যানুয়াল', url: 'manual/ইউজার-প্যানেল-ম্যানুয়াল.html', enabled: true },
+        { id: 'demo-1', label: 'ডেমো বাটন ১', url: '', enabled: false },
+        { id: 'demo-2', label: 'ডেমো বাটন ২', url: '', enabled: false },
+        { id: 'demo-3', label: 'ডেমো বাটন ৩', url: '', enabled: false }
+    ];
     var safeUrl = httpUrl;
     var normImg = function (o) { o = o || {}; return { url: httpsUrl(o.url), alt: T(o.alt, 140) }; };
     var normVis = function (o) { o = o || {}; return { value: T(o.value, 200), vis: (o.vis === 'app' || o.vis === 'public') ? o.vis : 'none' }; };
@@ -20033,7 +20426,19 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
         var p = (d.profile && typeof d.profile === 'object') ? d.profile : {}, c = p.contact || {}, ps = p.publicSite || {};
         return {
             about: T(d.about, 2000),
-            links: arr(d.links, 12).map(function (l) { return { label: T(l && l.label, 60), url: httpUrl(l && l.url) }; }).filter(function (l) { return l.url; }),
+            links: arr(d.links, 12).map(function (l) { return { label: T(l && l.label, 60), url: httpUrl(l && l.url), userEnabled: !l || l.userEnabled !== false }; }).filter(function (l) { return l.url; }),
+            userButtons: Array.isArray(d.userButtons) ? arr(d.userButtons, 12).map(function (b, i) {
+                b = (b && typeof b === 'object') ? b : {};
+                var def = DEFAULT_USER_BUTTONS.filter(function (x) { return x.id === b.id; })[0] || DEFAULT_USER_BUTTONS[i];
+                return {
+                    id: T(b.id, 24) || (def ? def.id : 'custom-' + (i + 1)),
+                    label: T(b.label == null ? (def ? def.label : '') : b.label, 60),
+                    url: buttonUrl(b.url == null ? (def ? def.url : '') : b.url),
+                    enabled: b.enabled == null ? (def ? def.enabled : false) : b.enabled === true
+                };
+            }) : DEFAULT_USER_BUTTONS.map(function (def) {
+                return { id: def.id, label: def.label, url: buttonUrl(def.url), enabled: def.enabled };
+            }),
             profile: {
                 v: 2, orgName: T(p.orgName, 80), tagline: T(p.tagline, 140), cover: normImg(p.cover), history: T(p.history, 3000),
                 workItems: arr(p.workItems, 12).map(function (x) { x = x || {}; return { id: T(x.id, 24), title: T(x.title, 80), text: T(x.text, 600), image: normImg(x.image) }; }),
@@ -20055,7 +20460,7 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
             enabled: true, v: 2, updatedAt: now, title: p.publicSite.title, orgName: p.orgName, tagline: p.tagline, about: s.about, history: p.history, cover: p.cover,
             workItems: p.workItems, experienceItems: p.experienceItems, gallery: p.gallery,
             testimonials: p.testimonials.filter(function (t) { return t.approved && t.text; }).map(function (t) { return { name: t.name, role: t.role, text: t.text }; }),
-            contact: contact, links: s.links, loginUrl: p.publicSite.loginUrl, siteUrl: p.publicSite.url
+            contact: contact, links: s.links.map(function (l) { return { label: l.label, url: l.url }; }), loginUrl: p.publicSite.loginUrl, siteUrl: p.publicSite.url
         };
     }
     var nl = function (t) { return esc(t).replace(/\n/g, '<br>'); };
@@ -20077,9 +20482,13 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
         if (vis('address')) ct.push('<li>📍 ' + nl(p.contact.address.value) + '</li>');
         if (vis('hours')) ct.push('<li>🕒 ' + nl(p.contact.hours.value) + '</li>');
         if (ct.length) sec('☎️ যোগাযোগ', '<ul class="mfa-ct">' + ct.join('') + '</ul>');
-        var ln = site.links.map(function (l) { return '<a href="' + esc(l.url) + '" target="_blank" rel="noopener noreferrer">🔗 ' + esc(l.label || l.url) + '</a>'; });
+        var ln = site.links.filter(function (l) { return o.mode === 'public' || l.userEnabled !== false; }).map(function (l) { return '<a href="' + esc(l.url) + '" target="_blank" rel="noopener noreferrer">🔗 ' + esc(l.label || l.url) + '</a>'; });
         if (o.mode !== 'public' && p.publicSite.enabled && p.publicSite.url) ln.unshift('<a href="' + esc(p.publicSite.url) + '" target="_blank" rel="noopener noreferrer">🌐 ' + esc(p.publicSite.title) + '</a>');
         if (ln.length) sec('🔗 অফিসিয়াল লিংক', '<div class="mfa-links">' + ln.join('') + '</div>');
+        var userButtons = (o.mode !== 'public' && Array.isArray(site.userButtons)) ? site.userButtons.filter(function (b) { return b.enabled && b.label && buttonUrl(b.url); }) : [];
+        if (userButtons.length) sec('📘 ইউজার প্যানেলের বাটন', '<div class="mfa-links">' + userButtons.map(function (b) {
+            return '<a href="' + esc(buttonUrl(b.url)) + '" target="_blank" rel="noopener noreferrer">🔗 ' + esc(b.label) + '</a>';
+        }).join('') + '</div>');
         if (out.length === 1) out.push('<p class="mfa-empty">এখনো কোনো তথ্য যোগ করা হয়নি।' + (o.admin ? ' <b>ERP কেন্দ্র → সংগঠন</b> থেকে যোগ করুন।' : '') + '</p>');
         return out.join('');
     }
@@ -21718,6 +22127,62 @@ body.dark-mode .log-icon.sent,body.dark-mode .log-tag.sent{color:#e8c877}
   });
   window.addEventListener('appinstalled', function () { if (box) box.classList.remove('show'); });
   window.mfInstallApp = function () { if (ev) { ev.prompt(); } else { try { alert('ব্রাউজার মেনু (⋮) থেকে "Add to Home screen / হোম স্ক্রিনে যোগ করুন" বেছে নিন। iPhone-এ Safari-র শেয়ার বাটন থেকে।'); } catch (e) { } } };
+})();
+</script>
+<style id="mf-pg-css">
+tr.mf-pg-hide{display:none}
+#export-capture tr.mf-pg-hide{display:table-row!important}
+@media print{tr.mf-pg-hide{display:table-row!important}.mf-pg-bar{display:none!important}}
+.mf-pg-bar{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;margin:10px 0 18px;font-size:13.5px}
+.mf-pg-bar span{opacity:.8}
+.mf-pg-bar button{border:1.5px solid var(--emerald-700,#0c4230);background:var(--paper-raised,#fff);color:var(--emerald-700,#0c4230);border-radius:999px;padding:8px 16px;font:inherit;font-weight:700;cursor:pointer;min-height:40px}
+.mf-pg-bar button.pri{background:var(--emerald-700,#0c4230);color:#fff}
+body.dark-mode .mf-pg-bar button{background:#17302a;color:#e8c877;border-color:#e8c877}
+body.dark-mode .mf-pg-bar button.pri{background:#e8c877;color:#0c2c22}
+</style>
+<script id="mf-pg-js">
+/* 🆕 [v16.5.114] বড় তালিকায় লেগ কমানো: ১২০টির বেশি সারি থাকলে প্রথমে ৬০টি দেখায়, নিচে "আরও দেখান" বাটন।
+   সারিগুলো DOM-এ থেকেই যায় (শুধু লুকানো), তাই এডিট/ডিলিট/সিলেক্ট/এক্সপোর্ট/প্রিন্ট আগের মতোই কাজ করে।
+   এক্সপোর্ট-ক্যাপচার ও প্রিন্টে সব সারি দেখা যায়। */
+(function () {
+  'use strict';
+  var MIN = 120, FIRST = 60, STEP = 60, limits = {}, lastSig = '', obs = null, obsEl = null, pend = false;
+  function sigOf(tb, i) { var ks = []; try { var hs = tb.tHead && tb.tHead.rows[0] ? tb.tHead.rows[0].cells : []; for (var k = 0; k < hs.length; k++) ks.push(hs[k].getAttribute('data-col-key') || hs[k].textContent.trim().slice(0, 12)); } catch (e) { } return (tb.getAttribute('data-mf-tid') || '') + ':' + i + ':' + ks.join('|'); }
+  function rowsOf(tb) { var b = tb.tBodies && tb.tBodies[0]; return b ? Array.prototype.slice.call(b.rows) : []; }
+  function bn(n) { return String(n).replace(/\d/g, function (d) { return '০১২৩৪৫৬৭৮৯'.charAt(+d); }); }
+  function apply(tb, key) {
+    var rows = rowsOf(tb); if (rows.length < MIN) return;
+    var lim = limits[key] || FIRST;
+    try { var _a = window._scrollAnchorSelector; if (_a) { var _el = tb.querySelector(_a); var _tr = _el && (_el.closest ? _el.closest('tr') : null); var _ix = _tr ? rows.indexOf(_tr) : -1; if (_ix >= lim) { lim = Math.ceil((_ix + 1) / STEP) * STEP; limits[key] = lim; } } } catch (e) { }   // এডিট-করা সারি লুকানো থাকলে খুলে দেওয়া
+    rows.forEach(function (r, i) { r.classList.toggle('mf-pg-hide', i >= lim); });
+    var host = tb.closest('.table-wrap') || tb, old = host.nextElementSibling;
+    if (old && old.classList && old.classList.contains('mf-pg-bar')) old.parentNode.removeChild(old);
+    if (lim >= rows.length) return;
+    var bar = document.createElement('div'); bar.className = 'mf-pg-bar no-print';
+    bar.innerHTML = '<span>' + bn(Math.min(lim, rows.length)) + ' / ' + bn(rows.length) + ' টি দেখানো হচ্ছে</span><button type="button" class="pri" data-pg="more">⬇ আরও ' + bn(STEP) + 'টি দেখান</button><button type="button" data-pg="all">সব দেখান</button>';
+    bar.addEventListener('click', function (e) {
+      var b = e.target.closest && e.target.closest('[data-pg]'); if (!b) return;
+      limits[key] = b.getAttribute('data-pg') === 'all' ? rows.length : lim + STEP;
+      apply(tb, key);
+    });
+    host.parentNode.insertBefore(bar, host.nextSibling);
+  }
+  function run() {
+    pend = false;
+    var main = document.getElementById('main'); if (!main) return;
+    var tbs = main.querySelectorAll('table'), sigs = [];
+    for (var i = 0; i < tbs.length; i++) { if (tbs[i].closest('#export-capture')) continue; sigs.push(sigOf(tbs[i], i)); }
+    var sig = sigs.join('#'); if (sig !== lastSig) { limits = {}; lastSig = sig; }
+    for (var j = 0; j < tbs.length; j++) { if (tbs[j].closest('#export-capture')) continue; try { apply(tbs[j], sigOf(tbs[j], j)); } catch (e) { console.error('[পেজিং]', e); } }
+  }
+  function sched() { if (pend) return; pend = true; (window.requestAnimationFrame || setTimeout)(run); }
+  function attach() {
+    var m = document.getElementById('main'); if (!m || m === obsEl) return;
+    if (obs) obs.disconnect(); obsEl = m; obs = new MutationObserver(sched); obs.observe(m, { childList: true }); sched();
+  }
+  setInterval(attach, 700); attach();
+  window.mfPgNow = run;
+  window.mfPgExpandAll = function () { var m = document.getElementById('main'); if (!m) return; var t = m.querySelectorAll('tr.mf-pg-hide'); for (var i = 0; i < t.length; i++) t[i].classList.remove('mf-pg-hide'); };
 })();
 </script>
 </body>
